@@ -20,15 +20,18 @@ type Service struct {
 	minDepositSats int64
 }
 
-func NewService(secret string, blinkClient *blink.Client, sessionStore *session.Store, minDepositSats int64) *Service {
-	macaroonService, _ := NewMacaroonService(secret, "satilligence")
+func NewService(secret string, blinkClient *blink.Client, sessionStore *session.Store, minDepositSats int64) (*Service, error) {
+	macaroonService, err := NewMacaroonService(secret, "satilligence")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create macaroon service: %w", err)
+	}
 
 	return &Service{
 		macaroons:      macaroonService,
 		blinkClient:    blinkClient,
 		sessionStore:   sessionStore,
 		minDepositSats: minDepositSats,
-	}
+	}, nil
 }
 
 type NewSessionResult struct {

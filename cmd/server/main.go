@@ -63,7 +63,11 @@ func main() {
 	sessionStore := session.NewStore(database)
 
 	// Initialize L402 service
-	l402Service := l402.NewService(cfg.MacaroonSecret, blinkClient, sessionStore, cfg.MinDepositSats)
+	l402Service, err := l402.NewService(cfg.MacaroonSecret, blinkClient, sessionStore, cfg.MinDepositSats)
+	if err != nil {
+		slog.Error("failed to initialize L402 service", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize billing calculator
 	billingCalc := billing.NewCalculator(priceFeed, cfg.MarkupPercent)

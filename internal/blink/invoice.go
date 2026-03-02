@@ -23,6 +23,14 @@ type createInvoiceResponse struct {
 }
 
 func (c *Client) CreateInvoice(ctx context.Context, amountSats int64, memo string) (*Invoice, error) {
+	// Development mode: return mock invoice when no API key
+	if c.apiKey == "" {
+		return &Invoice{
+			PaymentRequest: fmt.Sprintf("lnbc%dn1development_mode_invoice_%d", amountSats, amountSats),
+			PaymentHash:    fmt.Sprintf("devhash_%d_%d", amountSats, ctx.Value("session_id")),
+		}, nil
+	}
+
 	query := `
 		mutation LnInvoiceCreate($input: LnInvoiceCreateInput!) {
 			lnInvoiceCreate(input: $input) {
