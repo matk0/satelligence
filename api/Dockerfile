@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build binary
-RUN CGO_ENABLED=0 GOOS=linux go build -o /satilligence ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o /trandor ./cmd/server
 
 # Runtime stage
 FROM alpine:3.19
@@ -25,7 +25,7 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata
 
 # Copy binary from builder
-COPY --from=builder /satilligence /app/satilligence
+COPY --from=builder /trandor /app/trandor
 
 # Copy migrations
 COPY --from=builder /app/internal/db/migrations /app/migrations
@@ -38,4 +38,4 @@ USER appuser
 EXPOSE 8080
 
 # Run the application
-CMD ["/app/satilligence"]
+CMD ["/app/trandor"]

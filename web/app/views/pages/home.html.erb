@@ -1,28 +1,123 @@
 <div class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
   <!-- Hero Section -->
   <header class="relative overflow-hidden">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-      <div class="text-center">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <div class="text-center mb-12">
         <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">
           <span class="bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-400 bg-clip-text text-transparent">
-            Satilligence
+            Trandor
           </span>
         </h1>
-        <p class="text-xl md:text-2xl text-gray-300 mb-8 max-w-3xl mx-auto">
+        <p class="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto">
           Bitcoin-native AI. Pay per request with Lightning.
           <br>
           <span class="text-yellow-400">No accounts. No subscriptions. Just sats.</span>
         </p>
-        <div class="flex flex-col sm:flex-row gap-4 justify-center">
-          <%= link_to "Try It Now", chat_path, class: "px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-lg text-lg transition-all transform hover:scale-105" %>
-          <%= link_to "Read Docs", docs_path, class: "px-8 py-4 border-2 border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black font-bold rounded-lg text-lg transition-all" %>
+      </div>
+
+      <!-- Interactive Terminal Demo -->
+      <div class="max-w-4xl mx-auto" data-controller="demo">
+        <div class="bg-slate-950 rounded-xl border border-slate-700 shadow-2xl overflow-hidden">
+          <!-- Terminal Header -->
+          <div class="bg-slate-800 px-4 py-3 flex items-center gap-2 border-b border-slate-700">
+            <div class="flex gap-2">
+              <div class="w-3 h-3 rounded-full bg-red-500"></div>
+              <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+              <div class="w-3 h-3 rounded-full bg-green-500"></div>
+            </div>
+            <span class="text-gray-400 text-sm ml-4 font-mono">Try it live</span>
+          </div>
+
+          <!-- Terminal Content -->
+          <div class="p-6 font-mono text-sm">
+            <!-- Command with inline inputs -->
+            <div class="text-gray-400 mb-2">
+              <span class="text-green-400">$</span> curl -X POST "<span class="text-yellow-400">https://api.trandor.com/v1/nwc/chat/completions</span>" \
+            </div>
+            <div class="text-gray-400 pl-6 mb-2">
+              -H "Content-Type: application/json" \
+            </div>
+            <div class="text-gray-400 pl-6 mb-2 flex flex-wrap items-center gap-1">
+              <span>-H "X-NWC:</span>
+              <input
+                type="text"
+                data-demo-target="nwcInput"
+                placeholder="nostr+walletconnect://..."
+                class="flex-1 min-w-[200px] bg-slate-900 border border-slate-600 rounded px-2 py-1 text-cyan-400 placeholder-slate-600 focus:outline-none focus:border-yellow-500 text-sm"
+              ><span>" \</span>
+            </div>
+            <div class="text-gray-400 pl-6 mb-2">
+              -d '{
+            </div>
+            <div class="text-gray-400 pl-10 mb-2 flex flex-wrap items-center gap-1">
+              <span>"model": "</span><select
+                data-demo-target="modelSelect"
+                class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-cyan-400 focus:outline-none focus:border-yellow-500 text-sm cursor-pointer"
+              >
+                <option value="">Loading models...</option>
+              </select><span>",</span>
+            </div>
+            <div class="text-gray-400 pl-10 mb-2">
+              "messages": [{"role": "user", "content":
+            </div>
+            <div class="pl-14 mb-2">
+              <input
+                type="text"
+                data-demo-target="messageInput"
+                value="Hello world"
+                class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-cyan-400 focus:outline-none focus:border-yellow-500 text-sm"
+              >
+            </div>
+            <div class="text-gray-400 pl-10 mb-2">
+              }]
+            </div>
+            <div class="text-gray-400 pl-6 mb-4">
+              }'
+            </div>
+
+            <!-- Privacy note and Send Button -->
+            <div class="border-t border-slate-700 pt-4 mt-2 space-y-3">
+              <p class="text-gray-500 text-xs">
+                <span class="text-yellow-500">*</span> NWC string stays in your browser and is never sent to our servers
+              </p>
+              <button
+                data-action="click->demo#send"
+                data-demo-target="sendBtn"
+                class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Send Request
+              </button>
+            </div>
+
+            <!-- Timeline / Progress -->
+            <div data-demo-target="timeline" class="hidden border-t border-slate-700 pt-4 mt-4">
+              <div class="space-y-2" data-demo-target="timelineItems">
+                <!-- Timeline items will be inserted here -->
+              </div>
+            </div>
+
+            <!-- Response -->
+            <div data-demo-target="response" class="hidden border-t border-slate-700 pt-4 mt-4">
+              <div class="text-gray-500 text-xs mb-2">Response:</div>
+              <div class="bg-slate-900 rounded p-4 text-green-400" data-demo-target="responseContent">
+              </div>
+              <div class="mt-3 flex gap-4 text-xs">
+                <span class="text-gray-500">Cost: <span class="text-yellow-400" data-demo-target="costDisplay">-</span> sats</span>
+                <span class="text-gray-500">Refund: <span class="text-green-400" data-demo-target="refundDisplay">-</span> sats</span>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <p class="text-center text-gray-500 text-sm mt-4">
+          Get your NWC connection string from <a href="https://getalby.com" target="_blank" class="text-yellow-400 hover:underline">Alby</a> or any NWC-compatible wallet
+        </p>
       </div>
     </div>
 
     <!-- Lightning bolt decoration -->
-    <div class="absolute top-20 left-10 text-yellow-500/20 text-9xl">&#x26A1;</div>
-    <div class="absolute bottom-10 right-10 text-yellow-500/20 text-9xl">&#x26A1;</div>
+    <div class="absolute top-20 left-10 text-yellow-500/10 text-9xl pointer-events-none">&#x26A1;</div>
+    <div class="absolute bottom-10 right-10 text-yellow-500/10 text-9xl pointer-events-none">&#x26A1;</div>
   </header>
 
   <!-- How It Works -->
@@ -32,26 +127,26 @@
 
       <div class="grid md:grid-cols-3 gap-8">
         <div class="bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10">
-          <div class="text-4xl mb-4">&#x1F4B3;</div>
-          <h3 class="text-xl font-bold text-white mb-3">Connect Your Wallet</h3>
+          <div class="text-4xl mb-4">1</div>
+          <h3 class="text-xl font-bold text-white mb-3">Paste NWC String</h3>
           <p class="text-gray-400">
-            Use Alby browser extension or paste your NWC connection string. Your wallet authorizes payments automatically.
+            Get your NWC connection string from Alby or any compatible wallet. It authorizes payments up to a limit you set.
           </p>
         </div>
 
         <div class="bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10">
-          <div class="text-4xl mb-4">&#x1F916;</div>
-          <h3 class="text-xl font-bold text-white mb-3">Send Your Request</h3>
+          <div class="text-4xl mb-4">2</div>
+          <h3 class="text-xl font-bold text-white mb-3">Send Request</h3>
           <p class="text-gray-400">
-            Chat with GPT-4o, GPT-4o-mini, or GPT-4-turbo. We estimate the cost and charge upfront via Lightning.
+            We estimate the cost, charge via Lightning, call the AI, and return the response. All in one HTTP request.
           </p>
         </div>
 
         <div class="bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10">
-          <div class="text-4xl mb-4">&#x26A1;</div>
-          <h3 class="text-xl font-bold text-white mb-3">Instant Refund</h3>
+          <div class="text-4xl mb-4">3</div>
+          <h3 class="text-xl font-bold text-white mb-3">Get Refund</h3>
           <p class="text-gray-400">
-            After the AI responds, we calculate the actual cost and immediately refund the difference back to your wallet.
+            We charge 2x estimated cost upfront, then immediately refund the difference after calculating actual usage.
           </p>
         </div>
       </div>
@@ -96,22 +191,13 @@
   <section class="py-20 bg-black/30">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <h2 class="text-3xl md:text-4xl font-bold text-white text-center mb-4">OpenAI-Compatible API</h2>
-      <p class="text-gray-400 text-center mb-12 max-w-2xl mx-auto">
-        Drop-in replacement for OpenAI. Just add your NWC connection string.
+      <p class="text-gray-400 text-center mb-8 max-w-2xl mx-auto">
+        Drop-in replacement for OpenAI. Just add your NWC connection string as a header.
       </p>
 
-      <div class="bg-slate-900 rounded-2xl p-6 md:p-8 border border-slate-700 overflow-x-auto">
-        <pre class="text-sm md:text-base text-gray-300"><code><span class="text-green-400">curl</span> -X POST <span class="text-yellow-400">"https://api.satilligence.com/v1/nwc/chat/completions"</span> \
-  -H <span class="text-yellow-400">"Content-Type: application/json"</span> \
-  -H <span class="text-yellow-400">"X-NWC: nostr+walletconnect://..."</span> \
-  -d <span class="text-yellow-400">'{
-    "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'</span></code></pre>
-      </div>
-
-      <div class="mt-8 text-center">
-        <%= link_to "View Full Documentation", docs_path, class: "text-yellow-400 hover:text-yellow-300 font-medium" %>
+      <div class="text-center">
+        <%= link_to "View Full Documentation", docs_path, class: "px-8 py-4 border-2 border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black font-bold rounded-lg text-lg transition-all" %>
+        <%= link_to "Open Chat Interface", chat_path, class: "ml-4 px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-lg text-lg transition-all" %>
       </div>
     </div>
   </section>

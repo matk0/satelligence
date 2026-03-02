@@ -6,18 +6,19 @@ type ModelPrice struct {
 	OutputPerMillion float64
 }
 
-// ModelPricing contains pricing for all supported models
+// ModelPricing contains pricing for all supported models (USD per 1M tokens)
 var ModelPricing = map[string]ModelPrice{
-	// OpenAI models
-	"gpt-4o":        {InputPerMillion: 5.00, OutputPerMillion: 15.00},
-	"gpt-4o-mini":   {InputPerMillion: 0.15, OutputPerMillion: 0.60},
-	"gpt-4-turbo":   {InputPerMillion: 10.00, OutputPerMillion: 30.00},
-	"gpt-4":         {InputPerMillion: 30.00, OutputPerMillion: 60.00},
-	"gpt-3.5-turbo": {InputPerMillion: 0.50, OutputPerMillion: 1.50},
+	// GPT-5 family
+	"gpt-5.2":     {InputPerMillion: 1.75, OutputPerMillion: 14.00},
+	"gpt-5.2-pro": {InputPerMillion: 21.00, OutputPerMillion: 168.00},
+	"gpt-5":       {InputPerMillion: 1.25, OutputPerMillion: 10.00},
+	"gpt-5-mini":  {InputPerMillion: 0.25, OutputPerMillion: 2.00},
+	"gpt-5-nano":  {InputPerMillion: 0.05, OutputPerMillion: 0.40},
 
-	// Placeholder for future providers
-	// "claude-3-opus":   {InputPerMillion: 15.00, OutputPerMillion: 75.00},
-	// "claude-3-sonnet": {InputPerMillion: 3.00, OutputPerMillion: 15.00},
+	// GPT-4 family
+	"gpt-4o":      {InputPerMillion: 2.50, OutputPerMillion: 10.00},
+	"gpt-4o-mini": {InputPerMillion: 0.15, OutputPerMillion: 0.60},
+	"gpt-4-turbo": {InputPerMillion: 10.00, OutputPerMillion: 30.00},
 }
 
 func GetModelPrice(model string) (ModelPrice, bool) {

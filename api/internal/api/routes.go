@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/satilligence/satilligence/config"
-	"github.com/satilligence/satilligence/internal/l402"
+	"github.com/trandor/trandor/config"
+	"github.com/trandor/trandor/internal/l402"
 )
 
 func NewRouter(handler *Handler, nwcHandler *NWCHandler, weblnHandler *WebLNHandler, l402Service *l402.Service, cfg *config.Config) http.Handler {

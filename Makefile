@@ -53,7 +53,7 @@ test: test-api test-web
 
 # Build for production
 build-api:
-	cd api && go build -o bin/satilligence ./cmd/server
+	cd api && go build -o bin/trandor ./cmd/server
 
 build-web:
 	cd web && rails assets:precompile

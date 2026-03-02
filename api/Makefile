@@ -2,11 +2,11 @@
 
 # Build the application
 build:
-	go build -o bin/satilligence ./cmd/server
+	go build -o bin/trandor ./cmd/server
 
 # Run the application
 run: build
-	./bin/satilligence
+	./bin/trandor
 
 # Run in development mode with auto-reload
 dev:
@@ -36,7 +36,7 @@ lint:
 
 # Docker commands
 docker-build:
-	docker build -t satilligence .
+	docker build -t trandor .
 
 docker-up:
 	docker-compose up -d

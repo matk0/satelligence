@@ -7,12 +7,13 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/satilligence/satilligence/config"
-	"github.com/satilligence/satilligence/internal/billing"
-	"github.com/satilligence/satilligence/internal/l402"
-	"github.com/satilligence/satilligence/internal/provider"
-	"github.com/satilligence/satilligence/internal/provider/openai"
-	"github.com/satilligence/satilligence/internal/session"
+	"github.com/trandor/trandor/config"
+	"github.com/trandor/trandor/internal/billing"
+	"github.com/trandor/trandor/internal/l402"
+	"github.com/trandor/trandor/internal/models"
+	"github.com/trandor/trandor/internal/provider"
+	"github.com/trandor/trandor/internal/provider/openai"
+	"github.com/trandor/trandor/internal/session"
 )
 
 type Handler struct {
@@ -21,6 +22,7 @@ type Handler struct {
 	providerRouter *provider.Router
 	billing        *billing.Calculator
 	moderator      *openai.Provider
+	modelFeed      *models.ModelFeed
 	config         *config.Config
 }
 
@@ -30,6 +32,7 @@ func NewHandler(
 	providerRouter *provider.Router,
 	billing *billing.Calculator,
 	moderator *openai.Provider,
+	modelFeed *models.ModelFeed,
 	cfg *config.Config,
 ) *Handler {
 	return &Handler{
@@ -38,6 +41,7 @@ func NewHandler(
 		providerRouter: providerRouter,
 		billing:        billing,
 		moderator:      moderator,
+		modelFeed:      modelFeed,
 		config:         cfg,
 	}
 }
@@ -65,8 +69,8 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate model
-	if !h.providerRouter.IsModelSupported(req.Model) {
-		l402.WriteError(w, http.StatusBadRequest, "invalid_model", "model not supported: "+req.Model)
+	if !h.modelFeed.IsSupported(req.Model) {
+		l402.WriteError(w, http.StatusBadRequest, "invalid_model", "Model '"+req.Model+"' is not supported. Use /v1/models to see available models.")
 		return
 	}
 
@@ -179,7 +183,7 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// Return response
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-Satilligence-Cost-Sats", fmt.Sprintf("%d", cost.TotalSats))
+	w.Header().Set("X-Trandor-Cost-Sats", fmt.Sprintf("%d", cost.TotalSats))
 	json.NewEncoder(w).Encode(resp)
 }
 
@@ -251,11 +255,11 @@ func (h *Handler) GetUsage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
-	models := h.providerRouter.ListModels()
+	modelList := h.modelFeed.GetModels()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"models": models,
+		"models": modelList,
 	})
 }
 

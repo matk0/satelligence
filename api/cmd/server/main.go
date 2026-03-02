@@ -10,15 +10,16 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/satilligence/satilligence/config"
-	"github.com/satilligence/satilligence/internal/api"
-	"github.com/satilligence/satilligence/internal/billing"
-	"github.com/satilligence/satilligence/internal/blink"
-	"github.com/satilligence/satilligence/internal/db"
-	"github.com/satilligence/satilligence/internal/l402"
-	"github.com/satilligence/satilligence/internal/provider"
-	"github.com/satilligence/satilligence/internal/provider/openai"
-	"github.com/satilligence/satilligence/internal/session"
+	"github.com/trandor/trandor/config"
+	"github.com/trandor/trandor/internal/api"
+	"github.com/trandor/trandor/internal/billing"
+	"github.com/trandor/trandor/internal/blink"
+	"github.com/trandor/trandor/internal/db"
+	"github.com/trandor/trandor/internal/l402"
+	"github.com/trandor/trandor/internal/models"
+	"github.com/trandor/trandor/internal/provider"
+	"github.com/trandor/trandor/internal/provider/openai"
+	"github.com/trandor/trandor/internal/session"
 )
 
 func main() {
@@ -75,9 +76,14 @@ func main() {
 	// Initialize provider router
 	openaiProvider := openai.NewProvider(cfg.OpenAIAPIKey)
 	providerRouter := provider.NewRouter()
-	providerRouter.Register("gpt-4o", openaiProvider)
-	providerRouter.Register("gpt-4o-mini", openaiProvider)
-	providerRouter.Register("gpt-4-turbo", openaiProvider)
+	// Register all models from pricing table
+	for model := range billing.ModelPricing {
+		providerRouter.Register(model, openaiProvider)
+	}
+
+	// Initialize model feed
+	modelFeed := models.NewModelFeed(cfg.OpenAIAPIKey, billing.ModelPricing)
+	go modelFeed.Start(context.Background())
 
 	// Initialize API handler (L402 legacy)
 	handler := api.NewHandler(
@@ -86,6 +92,7 @@ func main() {
 		providerRouter,
 		billingCalc,
 		openaiProvider, // for moderation
+		modelFeed,
 		cfg,
 	)
 
@@ -95,6 +102,7 @@ func main() {
 		billingCalc,
 		blinkClient,
 		openaiProvider, // for moderation
+		modelFeed,
 		cfg,
 	)
 
@@ -104,6 +112,7 @@ func main() {
 		billingCalc,
 		blinkClient,
 		openaiProvider, // for moderation
+		modelFeed,
 		cfg,
 	)
 

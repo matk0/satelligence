@@ -7,13 +7,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/satilligence/satilligence/config"
-	"github.com/satilligence/satilligence/internal/billing"
-	"github.com/satilligence/satilligence/internal/blink"
-	"github.com/satilligence/satilligence/internal/l402"
-	"github.com/satilligence/satilligence/internal/nwc"
-	"github.com/satilligence/satilligence/internal/provider"
-	"github.com/satilligence/satilligence/internal/provider/openai"
+	"github.com/trandor/trandor/config"
+	"github.com/trandor/trandor/internal/billing"
+	"github.com/trandor/trandor/internal/blink"
+	"github.com/trandor/trandor/internal/l402"
+	"github.com/trandor/trandor/internal/models"
+	"github.com/trandor/trandor/internal/nwc"
+	"github.com/trandor/trandor/internal/provider"
+	"github.com/trandor/trandor/internal/provider/openai"
 )
 
 // NWCHandler handles seamless pay-per-request via NWC
@@ -22,6 +23,7 @@ type NWCHandler struct {
 	billing        *billing.Calculator
 	blinkClient    *blink.Client
 	moderator      *openai.Provider
+	modelFeed      *models.ModelFeed
 	config         *config.Config
 }
 
@@ -30,6 +32,7 @@ func NewNWCHandler(
 	billing *billing.Calculator,
 	blinkClient *blink.Client,
 	moderator *openai.Provider,
+	modelFeed *models.ModelFeed,
 	cfg *config.Config,
 ) *NWCHandler {
 	return &NWCHandler{
@@ -37,6 +40,7 @@ func NewNWCHandler(
 		billing:        billing,
 		blinkClient:    blinkClient,
 		moderator:      moderator,
+		modelFeed:      modelFeed,
 		config:         cfg,
 	}
 }
@@ -74,8 +78,8 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate model
-	if !h.providerRouter.IsModelSupported(req.Model) {
-		l402.WriteError(w, http.StatusBadRequest, "invalid_model", "model not supported: "+req.Model)
+	if !h.modelFeed.IsSupported(req.Model) {
+		l402.WriteError(w, http.StatusBadRequest, "invalid_model", "Model '"+req.Model+"' is not supported. Use /v1/models to see available models.")
 		return
 	}
 
@@ -116,7 +120,7 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// Create invoice for 2x amount
-	invoice, err := h.blinkClient.CreateInvoice(ctx, chargeAmount, fmt.Sprintf("Satilligence: %s request", req.Model))
+	invoice, err := h.blinkClient.CreateInvoice(ctx, chargeAmount, fmt.Sprintf("Trandor: %s request", req.Model))
 	if err != nil {
 		slog.Error("failed to create invoice", "error", err)
 		l402.WriteError(w, http.StatusInternalServerError, "invoice_error", "failed to create payment invoice")
@@ -175,7 +179,7 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		)
 
 		// Ask user's wallet to create invoice for refund
-		refundInvoice, err := nwcClient.MakeInvoice(ctx, refundAmount, "Satilligence refund", 30*time.Second)
+		refundInvoice, err := nwcClient.MakeInvoice(ctx, refundAmount, "Trandor refund", 30*time.Second)
 		if err != nil {
 			slog.Error("failed to create refund invoice", "error", err)
 			refundStatus = "failed: " + err.Error()

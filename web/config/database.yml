@@ -5,11 +5,11 @@ default: &default
 
 development:
   <<: *default
-  database: satilligence
+  database: trandor
 
 test:
   <<: *default
-  database: satilligence_web_test
+  database: trandor_web_test
 
 production:
   primary:

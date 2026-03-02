@@ -11,10 +11,61 @@ export default class extends Controller {
     this.nwcConnection = null
     this.messages = []
 
+    // Load models dynamically
+    this.loadModels()
+
     // Check if Alby/WebLN is available
     if (window.webln) {
       this.statusTextTarget.textContent = "Alby detected"
     }
+  }
+
+  async loadModels() {
+    try {
+      const response = await fetch("/api/models")
+      if (!response.ok) {
+        throw new Error("Failed to fetch models")
+      }
+      const data = await response.json()
+      const models = data.models || []
+
+      // Clear existing options
+      this.modelSelectTarget.innerHTML = ""
+
+      // Add model options
+      models.forEach((model, index) => {
+        const option = document.createElement("option")
+        option.value = model
+        option.textContent = this.formatModelName(model)
+        // Select first model by default
+        if (index === 0) {
+          option.selected = true
+        }
+        this.modelSelectTarget.appendChild(option)
+      })
+
+      // Fallback if no models returned
+      if (models.length === 0) {
+        const option = document.createElement("option")
+        option.value = "gpt-4o-mini"
+        option.textContent = "GPT-4o Mini"
+        this.modelSelectTarget.appendChild(option)
+      }
+    } catch (error) {
+      console.error("Failed to load models:", error)
+      // Fallback to default model
+      this.modelSelectTarget.innerHTML = '<option value="gpt-4o-mini">GPT-4o Mini</option>'
+    }
+  }
+
+  formatModelName(model) {
+    // Format model name for display
+    return model
+      .replace('gpt-', 'GPT-')
+      .replace('-mini', ' Mini')
+      .replace('-turbo', ' Turbo')
+      .replace('-nano', ' Nano')
+      .replace('-pro', ' Pro')
   }
 
   connectWallet() {
@@ -107,6 +158,11 @@ export default class extends Controller {
     const assistantDiv = this.addMessage('assistant', '')
     const contentSpan = assistantDiv.querySelector('.message-content')
 
+    // Helper to update status in bubble
+    const setStatus = (icon, text) => {
+      contentSpan.innerHTML = `<span class="text-gray-400">${icon} ${text}</span>`
+    }
+
     try {
       // Build messages array
       this.messages.push({ role: 'user', content })
@@ -116,7 +172,8 @@ export default class extends Controller {
         const assistantContent = await this.callAPIWithWebLNStream(contentSpan)
         this.messages.push({ role: 'assistant', content: assistantContent })
       } else {
-        // Non-streaming flow for NWC
+        // NWC flow with status updates
+        setStatus('⚡', 'Authorizing payment via NWC...')
         const response = await this.callAPI()
         const assistantContent = response.choices[0].message.content
         contentSpan.textContent = assistantContent
@@ -127,8 +184,7 @@ export default class extends Controller {
       this.showCostInfo()
     } catch (error) {
       console.error('API error:', error)
-      contentSpan.textContent = 'Error: ' + error.message
-      assistantDiv.querySelector('div').classList.add('border-red-500')
+      contentSpan.innerHTML = `<span class="text-red-400">Error: ${error.message}</span>`
     } finally {
       this.isProcessing = false
       this.inputTarget.disabled = false
@@ -232,8 +288,13 @@ export default class extends Controller {
   async callAPIWithWebLNStream(contentSpan) {
     const model = this.modelSelectTarget.value
 
+    // Helper to update status in bubble
+    const setStatus = (icon, text) => {
+      contentSpan.innerHTML = `<span class="text-gray-400">${icon} ${text}</span>`
+    }
+
     // Step 1: Get a quote
-    this.sendBtnTarget.textContent = 'Getting quote...'
+    setStatus('⏳', 'Getting quote...')
 
     const quoteResponse = await fetch('/api/webln/quote', {
       method: 'POST',
@@ -249,7 +310,7 @@ export default class extends Controller {
     const quote = await quoteResponse.json()
 
     // Step 2: Pay via WebLN
-    this.sendBtnTarget.textContent = `Paying ${quote.amount_sats} sats...`
+    setStatus('⚡', `Paying ${quote.amount_sats} sats...`)
 
     try {
       await window.webln.sendPayment(quote.payment_request)
@@ -257,8 +318,8 @@ export default class extends Controller {
       throw new Error('Payment cancelled or failed: ' + error.message)
     }
 
-    // Step 3: Stream the response
-    this.sendBtnTarget.textContent = 'Streaming...'
+    // Step 3: Payment confirmed, connecting to AI
+    setStatus('✓', 'Paid! Connecting to AI...')
 
     const response = await fetch('/api/webln/chat/stream', {
       method: 'POST',
@@ -271,6 +332,9 @@ export default class extends Controller {
     }
 
     this.lastChargedSats = response.headers.get('X-Charged-Sats')
+
+    // Clear status, start showing response
+    contentSpan.textContent = ''
 
     // Read the stream
     const reader = response.body.getReader()
@@ -326,7 +390,7 @@ export default class extends Controller {
       // Request invoice from user's wallet
       const invoice = await window.webln.makeInvoice({
         amount: amountSats,
-        defaultMemo: 'Satilligence refund'
+        defaultMemo: 'Trandor refund'
       })
 
       // Submit invoice to backend for payment

@@ -1,4 +1,4 @@
-module github.com/satilligence/satilligence
+module github.com/trandor/trandor
 
 go 1.24.1
 

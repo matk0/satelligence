@@ -8,12 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/satilligence/satilligence/config"
-	"github.com/satilligence/satilligence/internal/billing"
-	"github.com/satilligence/satilligence/internal/blink"
-	"github.com/satilligence/satilligence/internal/l402"
-	"github.com/satilligence/satilligence/internal/provider"
-	"github.com/satilligence/satilligence/internal/provider/openai"
+	"github.com/trandor/trandor/config"
+	"github.com/trandor/trandor/internal/billing"
+	"github.com/trandor/trandor/internal/blink"
+	"github.com/trandor/trandor/internal/l402"
+	"github.com/trandor/trandor/internal/models"
+	"github.com/trandor/trandor/internal/provider"
+	"github.com/trandor/trandor/internal/provider/openai"
 )
 
 // WebLNHandler handles browser-based WebLN payments
@@ -22,6 +23,7 @@ type WebLNHandler struct {
 	billing        *billing.Calculator
 	blinkClient    *blink.Client
 	moderator      *openai.Provider
+	modelFeed      *models.ModelFeed
 	config         *config.Config
 
 	// Pending quotes (payment_hash -> quote)
@@ -45,6 +47,7 @@ func NewWebLNHandler(
 	billing *billing.Calculator,
 	blinkClient *blink.Client,
 	moderator *openai.Provider,
+	modelFeed *models.ModelFeed,
 	cfg *config.Config,
 ) *WebLNHandler {
 	h := &WebLNHandler{
@@ -52,6 +55,7 @@ func NewWebLNHandler(
 		billing:        billing,
 		blinkClient:    blinkClient,
 		moderator:      moderator,
+		modelFeed:      modelFeed,
 		config:         cfg,
 		quotes:         make(map[string]*Quote),
 	}
@@ -103,8 +107,8 @@ func (h *WebLNHandler) CreateQuote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate model
-	if !h.providerRouter.IsModelSupported(req.Model) {
-		l402.WriteError(w, http.StatusBadRequest, "invalid_model", "model not supported: "+req.Model)
+	if !h.modelFeed.IsSupported(req.Model) {
+		l402.WriteError(w, http.StatusBadRequest, "invalid_model", "Model '"+req.Model+"' is not supported. Use /v1/models to see available models.")
 		return
 	}
 
@@ -135,7 +139,7 @@ func (h *WebLNHandler) CreateQuote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create invoice
-	invoice, err := h.blinkClient.CreateInvoice(ctx, chargeAmount, fmt.Sprintf("Satilligence: %s request", req.Model))
+	invoice, err := h.blinkClient.CreateInvoice(ctx, chargeAmount, fmt.Sprintf("Trandor: %s request", req.Model))
 	if err != nil {
 		slog.Error("failed to create invoice", "error", err)
 		l402.WriteError(w, http.StatusInternalServerError, "invoice_error", "failed to create payment invoice")
@@ -326,12 +330,15 @@ func (h *WebLNHandler) ChatCompletionsStream(w http.ResponseWriter, r *http.Requ
 	// Get provider (must support streaming)
 	prov, err := h.providerRouter.GetProvider(quote.Model)
 	if err != nil {
+		slog.Error("failed to get provider", "error", err, "model", quote.Model)
 		l402.WriteError(w, http.StatusBadRequest, "invalid_model", "model not supported")
 		return
 	}
 
-	streamProv, ok := prov.(provider.StreamProvider)
+	// Cast to the concrete OpenAI provider which has ChatStream
+	openaiProv, ok := prov.(*openai.Provider)
 	if !ok {
+		slog.Error("provider does not support streaming", "model", quote.Model)
 		l402.WriteError(w, http.StatusBadRequest, "streaming_not_supported", "model does not support streaming")
 		return
 	}
@@ -343,9 +350,10 @@ func (h *WebLNHandler) ChatCompletionsStream(w http.ResponseWriter, r *http.Requ
 		MaxTokens: quote.MaxTokens,
 	}
 
-	stream, err := streamProv.ChatStream(ctx, req)
+	stream, err := openaiProv.ChatStream(ctx, req)
 	if err != nil {
 		if openaiErr, ok := err.(*openai.OpenAIError); ok {
+			slog.Error("openai stream error", "error", openaiErr.Message, "code", openaiErr.Code)
 			if openaiErr.StatusCode >= 400 && openaiErr.StatusCode < 500 {
 				l402.WriteError(w, openaiErr.StatusCode, "provider_error", openaiErr.Message)
 				return

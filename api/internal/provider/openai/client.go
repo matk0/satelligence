@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/satilligence/satilligence/internal/provider"
+	"github.com/trandor/trandor/internal/provider"
 )
 
 const (

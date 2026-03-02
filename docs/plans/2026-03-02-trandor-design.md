@@ -1,11 +1,11 @@
-# Satilligence Design Document
+# Trandor Design Document
 
 **Date:** 2026-03-02
 **Status:** Approved
 
 ## Overview
 
-Satilligence is a Bitcoin-native AI API gateway that:
+Trandor is a Bitcoin-native AI API gateway that:
 - Exposes an OpenAI-compatible API
 - Routes requests to AI providers (starting with OpenAI)
 - Charges users in satoshis via Lightning Network
@@ -16,7 +16,7 @@ Satilligence is a Bitcoin-native AI API gateway that:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Satilligence                             │
+│                        Trandor                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │   Client ──▶ L402 Auth ──▶ Rate Limit ──▶ Moderation ──▶ Router │
@@ -239,7 +239,7 @@ CREATE TABLE invoices (
 ## Project Structure
 
 ```
-satilligence/
+trandor/
 ├── cmd/
 │   └── server/
 │       └── main.go
@@ -304,7 +304,7 @@ services:
 
 **Caddyfile:**
 ```
-api.satilligence.com {
+api.trandor.com {
     reverse_proxy localhost:8080
 }
 ```

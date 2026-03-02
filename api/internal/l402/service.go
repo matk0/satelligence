@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/satilligence/satilligence/internal/blink"
-	"github.com/satilligence/satilligence/internal/session"
+	"github.com/trandor/trandor/internal/blink"
+	"github.com/trandor/trandor/internal/session"
 )
 
 const (
@@ -21,7 +21,7 @@ type Service struct {
 }
 
 func NewService(secret string, blinkClient *blink.Client, sessionStore *session.Store, minDepositSats int64) (*Service, error) {
-	macaroonService, err := NewMacaroonService(secret, "satilligence")
+	macaroonService, err := NewMacaroonService(secret, "trandor")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create macaroon service: %w", err)
 	}
@@ -64,7 +64,7 @@ func (s *Service) CreateNewSession(ctx context.Context) (*NewSessionResult, erro
 	// (In production, we'd do this in a transaction)
 
 	// Create invoice
-	invoice, err := s.blinkClient.CreateInvoice(ctx, s.minDepositSats, "Satilligence session deposit")
+	invoice, err := s.blinkClient.CreateInvoice(ctx, s.minDepositSats, "Trandor session deposit")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create invoice: %w", err)
 	}
@@ -82,7 +82,7 @@ func (s *Service) CreateTopUpInvoice(ctx context.Context, sessionID string, amou
 		amountSats = 1000 // Minimum top-up
 	}
 
-	return s.blinkClient.CreateInvoice(ctx, amountSats, "Satilligence balance top-up")
+	return s.blinkClient.CreateInvoice(ctx, amountSats, "Trandor balance top-up")
 }
 
 func (s *Service) VerifyMacaroon(encodedMacaroon string) (*MacaroonData, error) {

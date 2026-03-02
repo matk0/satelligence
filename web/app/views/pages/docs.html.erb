@@ -4,7 +4,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div class="flex items-center justify-between">
         <%= link_to root_path, class: "text-2xl font-bold text-yellow-400" do %>
-          &#x26A1; Satilligence
+          &#x26A1; Trandor
         <% end %>
         <nav class="flex gap-6">
           <%= link_to "Home", root_path, class: "text-gray-400 hover:text-white" %>
@@ -25,7 +25,7 @@
 
       <div class="prose prose-invert max-w-none">
         <p class="text-gray-300 mb-6">
-          Satilligence provides an OpenAI-compatible API that accepts Lightning payments via NWC (Nostr Wallet Connect).
+          Trandor provides an OpenAI-compatible API that accepts Lightning payments via NWC (Nostr Wallet Connect).
           No API keys, no accounts - just connect your Lightning wallet.
         </p>
 
@@ -41,7 +41,7 @@
 
         <h3 class="text-xl font-semibold text-white mt-8 mb-4">2. Make Your First Request</h3>
         <div class="bg-slate-800 rounded-lg p-4 mb-6 overflow-x-auto">
-          <pre class="text-sm text-gray-300"><code>curl -X POST "https://api.satilligence.com/v1/nwc/chat/completions" \
+          <pre class="text-sm text-gray-300"><code>curl -X POST "https://api.trandor.com/v1/nwc/chat/completions" \
   -H "Content-Type: application/json" \
   -H "X-NWC: nostr+walletconnect://WALLET_PUBKEY?relay=wss://relay.example.com&secret=YOUR_SECRET" \
   -d '{
@@ -236,7 +236,7 @@
             <pre class="text-sm text-gray-300"><code>import requests
 
 response = requests.post(
-    "https://api.satilligence.com/v1/nwc/chat/completions",
+    "https://api.trandor.com/v1/nwc/chat/completions",
     headers={
         "Content-Type": "application/json",
         "X-NWC": "nostr+walletconnect://..."
@@ -254,7 +254,7 @@ print(response.json())</code></pre>
         <div>
           <h4 class="text-white font-semibold mb-3">JavaScript</h4>
           <div class="bg-slate-800 rounded-lg p-4 overflow-x-auto">
-            <pre class="text-sm text-gray-300"><code>const response = await fetch("https://api.satilligence.com/v1/nwc/chat/completions", {
+            <pre class="text-sm text-gray-300"><code>const response = await fetch("https://api.trandor.com/v1/nwc/chat/completions", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -278,7 +278,7 @@ console.log(data);</code></pre>
   <footer class="py-8 border-t border-slate-700 mt-16">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
       <p class="text-gray-500">
-        &#x26A1; Satilligence - Bitcoin-native AI
+        &#x26A1; Trandor - Bitcoin-native AI
       </p>
     </div>
   </footer>

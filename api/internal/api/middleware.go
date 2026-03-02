@@ -8,9 +8,9 @@ import (
 
 	"github.com/go-chi/httprate"
 	"github.com/google/uuid"
-	"github.com/satilligence/satilligence/config"
-	"github.com/satilligence/satilligence/internal/l402"
-	"github.com/satilligence/satilligence/internal/session"
+	"github.com/trandor/trandor/config"
+	"github.com/trandor/trandor/internal/l402"
+	"github.com/trandor/trandor/internal/session"
 )
 
 // L402Middleware handles L402 authentication

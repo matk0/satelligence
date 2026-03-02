@@ -1,7 +1,7 @@
 package billing
 
 import (
-	"github.com/satilligence/satilligence/internal/blink"
+	"github.com/trandor/trandor/internal/blink"
 )
 
 type Calculator struct {

@@ -1,13 +1,13 @@
 #!/bin/bash
 set -e
 
-# Satilligence Deployment Script
+# Trandor Deployment Script
 # Usage: ./deploy.sh
 
 SERVER="root@167.99.250.110"
-APP_DIR="/opt/satilligence"
+APP_DIR="/opt/trandor"
 
-echo "==> Deploying Satilligence to $SERVER"
+echo "==> Deploying Trandor to $SERVER"
 
 # 1. Ensure server has Docker
 echo "==> Checking Docker installation..."
