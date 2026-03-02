@@ -49,7 +49,7 @@ func (c *Client) CreateInvoice(ctx context.Context, amountSats int64, memo strin
 		"input": map[string]interface{}{
 			"amount":   amountSats,
 			"memo":     memo,
-			"walletId": "BTC", // Use BTC wallet
+			"walletId": c.walletID,
 		},
 	}
 

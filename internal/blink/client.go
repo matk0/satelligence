@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -16,16 +17,73 @@ const (
 
 type Client struct {
 	apiKey     string
+	walletID   string
 	httpClient *http.Client
 }
 
 func NewClient(apiKey string) *Client {
-	return &Client{
+	c := &Client{
 		apiKey: apiKey,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+
+	// Fetch wallet ID if API key is provided
+	if apiKey != "" {
+		if err := c.fetchWalletID(context.Background()); err != nil {
+			slog.Warn("failed to fetch Blink wallet ID", "error", err)
+		} else {
+			slog.Info("fetched Blink wallet ID", "wallet_id", c.walletID)
+		}
+	}
+
+	return c
+}
+
+type walletResponse struct {
+	Me struct {
+		DefaultAccount struct {
+			Wallets []struct {
+				ID             string `json:"id"`
+				WalletCurrency string `json:"walletCurrency"`
+			} `json:"wallets"`
+		} `json:"defaultAccount"`
+	} `json:"me"`
+}
+
+func (c *Client) fetchWalletID(ctx context.Context) error {
+	query := `
+		query Me {
+			me {
+				defaultAccount {
+					wallets {
+						id
+						walletCurrency
+					}
+				}
+			}
+		}
+	`
+
+	var result walletResponse
+	if err := c.execute(ctx, query, nil, &result); err != nil {
+		return err
+	}
+
+	// Find BTC wallet
+	for _, wallet := range result.Me.DefaultAccount.Wallets {
+		if wallet.WalletCurrency == "BTC" {
+			c.walletID = wallet.ID
+			return nil
+		}
+	}
+
+	return fmt.Errorf("no BTC wallet found")
+}
+
+func (c *Client) GetWalletID() string {
+	return c.walletID
 }
 
 type graphQLRequest struct {

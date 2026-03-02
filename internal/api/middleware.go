@@ -87,8 +87,8 @@ func L402Middleware(l402Service *l402.Service, sessionStore *session.Store) func
 func issueChallenge(w http.ResponseWriter, l402Service *l402.Service, r *http.Request) {
 	result, err := l402Service.CreateNewSession(r.Context())
 	if err != nil {
-		slog.Error("failed to create session", "error", err)
-		l402.WriteError(w, http.StatusInternalServerError, "internal_error", "failed to create session")
+		slog.Error("failed to create session", "error", err.Error())
+		l402.WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
 
