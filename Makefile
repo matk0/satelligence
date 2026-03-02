@@ -1,59 +1,59 @@
-.PHONY: build run test clean dev docker-build docker-up docker-down migrate
+.PHONY: dev dev-api dev-web build up down logs ps clean
 
-# Build the application
-build:
-	go build -o bin/satilligence ./cmd/server
-
-# Run the application
-run: build
-	./bin/satilligence
-
-# Run in development mode with auto-reload
+# Development - run both services
 dev:
-	go run ./cmd/server
+	@echo "Starting development servers..."
+	@echo "API: http://localhost:8080"
+	@echo "Web: http://localhost:3000"
+	@make -j2 dev-api dev-web
 
-# Run tests
-test:
-	go test -v ./...
+dev-api:
+	cd api && go run ./cmd/server
 
-# Run tests with coverage
-test-coverage:
-	go test -v -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out -o coverage.html
-
-# Clean build artifacts
-clean:
-	rm -rf bin/
-	rm -f coverage.out coverage.html
-
-# Format code
-fmt:
-	go fmt ./...
-
-# Lint code
-lint:
-	golangci-lint run
+dev-web:
+	cd web && bin/dev
 
 # Docker commands
-docker-build:
-	docker build -t satilligence .
+build:
+	docker compose build
 
-docker-up:
-	docker-compose up -d
+up:
+	docker compose up -d
 
-docker-down:
-	docker-compose down
+down:
+	docker compose down
 
-docker-logs:
-	docker-compose logs -f
+logs:
+	docker compose logs -f
 
-# Database migrations (using golang-migrate)
-migrate-up:
-	migrate -path internal/db/migrations -database "$$DATABASE_URL" up
+ps:
+	docker compose ps
 
-migrate-down:
-	migrate -path internal/db/migrations -database "$$DATABASE_URL" down
+# Clean up
+clean:
+	docker compose down -v
+	cd api && rm -rf bin/
+	cd web && rm -rf tmp/ log/
 
-migrate-create:
-	@read -p "Migration name: " name; \
-	migrate create -ext sql -dir internal/db/migrations -seq $$name
+# Database
+db-create:
+	cd web && rails db:create
+
+db-migrate:
+	cd web && rails db:migrate
+
+# Testing
+test-api:
+	cd api && go test -v ./...
+
+test-web:
+	cd web && rails test
+
+test: test-api test-web
+
+# Build for production
+build-api:
+	cd api && go build -o bin/satilligence ./cmd/server
+
+build-web:
+	cd web && rails assets:precompile

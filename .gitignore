@@ -1,30 +1,3 @@
-# Binaries
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-satilligence
-
-# Test binary
-*.test
-
-# Output of go coverage
-*.out
-
-# Go workspace
-go.work
-go.work.sum
-
-# Dependency directories
-vendor/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
 # Environment
 .env
 .env.local
@@ -34,9 +7,51 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# Build
-/bin/
-/dist/
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 
 # Logs
 *.log
+
+# ===================
+# Go (API)
+# ===================
+api/bin/
+api/dist/
+api/vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# ===================
+# Rails (Web)
+# ===================
+web/log/*
+web/tmp/*
+web/storage/*
+web/.bundle
+web/public/assets
+web/public/packs
+web/public/packs-test
+web/node_modules
+web/yarn-error.log
+web/.yarn-integrity
+web/config/master.key
+web/config/credentials/*.key
+
+# Ignore Kamal secrets
+web/.kamal/secrets
+
+# ===================
+# Docker
+# ===================
+docker-compose.override.yml

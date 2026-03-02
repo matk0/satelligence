@@ -1,0 +1,127 @@
+<div class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+  <!-- Hero Section -->
+  <header class="relative overflow-hidden">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+      <div class="text-center">
+        <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">
+          <span class="bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-400 bg-clip-text text-transparent">
+            Satilligence
+          </span>
+        </h1>
+        <p class="text-xl md:text-2xl text-gray-300 mb-8 max-w-3xl mx-auto">
+          Bitcoin-native AI. Pay per request with Lightning.
+          <br>
+          <span class="text-yellow-400">No accounts. No subscriptions. Just sats.</span>
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+          <%= link_to "Try It Now", chat_path, class: "px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-lg text-lg transition-all transform hover:scale-105" %>
+          <%= link_to "Read Docs", docs_path, class: "px-8 py-4 border-2 border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black font-bold rounded-lg text-lg transition-all" %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lightning bolt decoration -->
+    <div class="absolute top-20 left-10 text-yellow-500/20 text-9xl">&#x26A1;</div>
+    <div class="absolute bottom-10 right-10 text-yellow-500/20 text-9xl">&#x26A1;</div>
+  </header>
+
+  <!-- How It Works -->
+  <section class="py-20 bg-black/30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-3xl md:text-4xl font-bold text-white text-center mb-16">How It Works</h2>
+
+      <div class="grid md:grid-cols-3 gap-8">
+        <div class="bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10">
+          <div class="text-4xl mb-4">&#x1F4B3;</div>
+          <h3 class="text-xl font-bold text-white mb-3">Connect Your Wallet</h3>
+          <p class="text-gray-400">
+            Use Alby browser extension or paste your NWC connection string. Your wallet authorizes payments automatically.
+          </p>
+        </div>
+
+        <div class="bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10">
+          <div class="text-4xl mb-4">&#x1F916;</div>
+          <h3 class="text-xl font-bold text-white mb-3">Send Your Request</h3>
+          <p class="text-gray-400">
+            Chat with GPT-4o, GPT-4o-mini, or GPT-4-turbo. We estimate the cost and charge upfront via Lightning.
+          </p>
+        </div>
+
+        <div class="bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10">
+          <div class="text-4xl mb-4">&#x26A1;</div>
+          <h3 class="text-xl font-bold text-white mb-3">Instant Refund</h3>
+          <p class="text-gray-400">
+            After the AI responds, we calculate the actual cost and immediately refund the difference back to your wallet.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="py-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-3xl md:text-4xl font-bold text-white text-center mb-4">Transparent Pricing</h2>
+      <p class="text-gray-400 text-center mb-16 max-w-2xl mx-auto">
+        Pay exactly what the AI costs plus a small markup. No hidden fees. No minimum commitment.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-8">
+        <div class="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-8 border border-slate-700">
+          <h3 class="text-2xl font-bold text-white mb-2">GPT-4o-mini</h3>
+          <p class="text-gray-400 mb-6">Fast and affordable</p>
+          <div class="text-4xl font-bold text-yellow-400 mb-2">~1 sat</div>
+          <p class="text-gray-500 text-sm">per typical request</p>
+        </div>
+
+        <div class="bg-gradient-to-br from-purple-800/50 to-slate-900 rounded-2xl p-8 border border-purple-500/50 relative">
+          <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-purple-500 text-white text-sm px-3 py-1 rounded-full">Popular</div>
+          <h3 class="text-2xl font-bold text-white mb-2">GPT-4o</h3>
+          <p class="text-gray-400 mb-6">Powerful and versatile</p>
+          <div class="text-4xl font-bold text-yellow-400 mb-2">~5-50 sats</div>
+          <p class="text-gray-500 text-sm">depending on length</p>
+        </div>
+
+        <div class="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-8 border border-slate-700">
+          <h3 class="text-2xl font-bold text-white mb-2">GPT-4-turbo</h3>
+          <p class="text-gray-400 mb-6">Maximum capability</p>
+          <div class="text-4xl font-bold text-yellow-400 mb-2">~10-100 sats</div>
+          <p class="text-gray-500 text-sm">for complex tasks</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- For Developers -->
+  <section class="py-20 bg-black/30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="text-3xl md:text-4xl font-bold text-white text-center mb-4">OpenAI-Compatible API</h2>
+      <p class="text-gray-400 text-center mb-12 max-w-2xl mx-auto">
+        Drop-in replacement for OpenAI. Just add your NWC connection string.
+      </p>
+
+      <div class="bg-slate-900 rounded-2xl p-6 md:p-8 border border-slate-700 overflow-x-auto">
+        <pre class="text-sm md:text-base text-gray-300"><code><span class="text-green-400">curl</span> -X POST <span class="text-yellow-400">"https://api.satilligence.com/v1/nwc/chat/completions"</span> \
+  -H <span class="text-yellow-400">"Content-Type: application/json"</span> \
+  -H <span class="text-yellow-400">"X-NWC: nostr+walletconnect://..."</span> \
+  -d <span class="text-yellow-400">'{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'</span></code></pre>
+      </div>
+
+      <div class="mt-8 text-center">
+        <%= link_to "View Full Documentation", docs_path, class: "text-yellow-400 hover:text-yellow-300 font-medium" %>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12 border-t border-white/10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <p class="text-gray-500">
+        Built with &#x26A1; Lightning &bull; Powered by Bitcoin
+      </p>
+    </div>
+  </footer>
+</div>
