@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/satilligence/satilligence/config"
 	"github.com/satilligence/satilligence/internal/api"
 	"github.com/satilligence/satilligence/internal/billing"
@@ -21,6 +22,9 @@ import (
 )
 
 func main() {
+	// Load .env file if present
+	godotenv.Load()
+
 	// Setup structured logging
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,

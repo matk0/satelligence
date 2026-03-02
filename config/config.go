@@ -48,15 +48,11 @@ func (c *Config) Validate() error {
 	if c.DatabaseURL == "" {
 		return ErrMissingDatabaseURL
 	}
-	if c.BlinkAPIKey == "" {
-		return ErrMissingBlinkAPIKey
-	}
-	if c.OpenAIAPIKey == "" {
-		return ErrMissingOpenAIAPIKey
-	}
 	if c.MacaroonSecret == "" {
 		return ErrMissingMacaroonSecret
 	}
+	// Blink and OpenAI keys are optional for local development
+	// but required for full functionality
 	return nil
 }
 

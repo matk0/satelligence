@@ -2,7 +2,9 @@ package blink
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -22,19 +24,29 @@ func NewPriceFeed(client *Client) *PriceFeed {
 
 type realtimePriceResponse struct {
 	RealtimePrice struct {
-		BtcSatPrice         float64 `json:"btcSatPrice"`
-		UsdCentPrice        float64 `json:"usdCentPrice"`
-		DenominatorCurrency string  `json:"denominatorCurrency"`
+		BtcSatPrice struct {
+			Base   int64 `json:"base"`
+			Offset int64 `json:"offset"`
+		} `json:"btcSatPrice"`
+		UsdCentPrice struct {
+			Base   int64 `json:"base"`
+			Offset int64 `json:"offset"`
+		} `json:"usdCentPrice"`
 	} `json:"realtimePrice"`
 }
 
-func (p *PriceFeed) fetchPrice(ctx context.Context) error {
+func (p *PriceFeed) fetchPriceFromBlink(ctx context.Context) error {
 	query := `
 		query RealtimePrice {
 			realtimePrice {
-				btcSatPrice
-				usdCentPrice
-				denominatorCurrency
+				btcSatPrice {
+					base
+					offset
+				}
+				usdCentPrice {
+					base
+					offset
+				}
 			}
 		}
 	`
@@ -44,10 +56,26 @@ func (p *PriceFeed) fetchPrice(ctx context.Context) error {
 		return err
 	}
 
-	// btcSatPrice is the price per sat in USD cents
-	// To get BTC price in USD: (1 sat = btcSatPrice cents) => (100M sats = btcSatPrice * 100M cents)
-	// BTC price = (btcSatPrice * 100,000,000) / 100 USD
-	btcPriceUSD := (result.RealtimePrice.BtcSatPrice * 100_000_000) / 100
+	// Calculate BTC price from the response
+	// btcSatPrice represents price per sat, we need to convert to BTC price
+	// The base and offset format: actual_value = base * 10^(-offset)
+	satPriceBase := float64(result.RealtimePrice.BtcSatPrice.Base)
+	satPriceOffset := result.RealtimePrice.BtcSatPrice.Offset
+
+	// Price per sat in USD
+	var satPriceUSD float64
+	if satPriceOffset > 0 {
+		divisor := float64(1)
+		for i := int64(0); i < satPriceOffset; i++ {
+			divisor *= 10
+		}
+		satPriceUSD = satPriceBase / divisor
+	} else {
+		satPriceUSD = satPriceBase
+	}
+
+	// BTC price = sat price * 100,000,000
+	btcPriceUSD := satPriceUSD * 100_000_000
 
 	p.mu.Lock()
 	p.btcPrice = btcPriceUSD
@@ -57,10 +85,57 @@ func (p *PriceFeed) fetchPrice(ctx context.Context) error {
 	return nil
 }
 
+// fetchPriceFromCoinGecko is a fallback for when Blink API is unavailable
+func (p *PriceFeed) fetchPriceFromCoinGecko(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Bitcoin struct {
+			USD float64 `json:"usd"`
+		} `json:"bitcoin"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return err
+	}
+
+	p.mu.Lock()
+	p.btcPrice = result.Bitcoin.USD
+	p.updatedAt = time.Now()
+	p.mu.Unlock()
+
+	return nil
+}
+
+func (p *PriceFeed) fetchPrice(ctx context.Context) error {
+	// Try Blink first
+	if err := p.fetchPriceFromBlink(ctx); err != nil {
+		slog.Warn("blink price fetch failed, trying coingecko", "error", err)
+		// Fallback to CoinGecko
+		return p.fetchPriceFromCoinGecko(ctx)
+	}
+	return nil
+}
+
 func (p *PriceFeed) Start(ctx context.Context) {
 	// Initial fetch
 	if err := p.fetchPrice(ctx); err != nil {
 		slog.Error("failed to fetch initial price", "error", err)
+		// Set a default price so the system can still function
+		p.mu.Lock()
+		p.btcPrice = 60000 // Fallback default
+		p.updatedAt = time.Now()
+		p.mu.Unlock()
+		slog.Warn("using fallback BTC price", "price", 60000)
 	}
 
 	ticker := time.NewTicker(60 * time.Second)
