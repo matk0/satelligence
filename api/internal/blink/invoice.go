@@ -77,15 +77,15 @@ const (
 )
 
 type invoiceStatusResponse struct {
-	LnInvoicePaymentStatus struct {
+	LnInvoicePaymentStatusByHash struct {
 		Status InvoiceStatus `json:"status"`
-	} `json:"lnInvoicePaymentStatus"`
+	} `json:"lnInvoicePaymentStatusByHash"`
 }
 
 func (c *Client) GetInvoiceStatus(ctx context.Context, paymentHash string) (InvoiceStatus, error) {
 	query := `
-		query InvoiceStatus($input: LnInvoicePaymentStatusInput!) {
-			lnInvoicePaymentStatus(input: $input) {
+		query InvoiceStatusByHash($input: LnInvoicePaymentStatusByHashInput!) {
+			lnInvoicePaymentStatusByHash(input: $input) {
 				status
 			}
 		}
@@ -102,5 +102,5 @@ func (c *Client) GetInvoiceStatus(ctx context.Context, paymentHash string) (Invo
 		return "", err
 	}
 
-	return result.LnInvoicePaymentStatus.Status, nil
+	return result.LnInvoicePaymentStatusByHash.Status, nil
 }

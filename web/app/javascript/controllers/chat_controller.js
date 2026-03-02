@@ -10,20 +10,11 @@ export default class extends Controller {
   connect() {
     this.nwcConnection = null
     this.messages = []
-    this.apiBase = this.getApiBase()
 
     // Check if Alby/WebLN is available
     if (window.webln) {
       this.statusTextTarget.textContent = "Alby detected"
     }
-  }
-
-  getApiBase() {
-    // Use environment-appropriate API URL
-    if (window.location.hostname === 'localhost') {
-      return 'http://localhost:8080'
-    }
-    return 'https://api.satilligence.com'
   }
 
   connectWallet() {
@@ -93,8 +84,13 @@ export default class extends Controller {
     const content = this.inputTarget.value.trim()
     if (!content) return
 
+    // Prevent double submissions
+    if (this.isProcessing) return
+    this.isProcessing = true
+
     if (!this.nwcConnection && !this.useWebLN) {
       alert('Please connect your wallet first')
+      this.isProcessing = false
       return
     }
 
@@ -128,6 +124,7 @@ export default class extends Controller {
       assistantDiv.querySelector('.message-content').textContent = 'Error: ' + error.message
       assistantDiv.classList.add('border-red-500')
     } finally {
+      this.isProcessing = false
       this.inputTarget.disabled = false
       this.sendBtnTarget.disabled = false
       this.sendBtnTarget.textContent = 'Send'
@@ -145,7 +142,7 @@ export default class extends Controller {
     }
 
     // NWC flow - server handles payment
-    const response = await fetch(`${this.apiBase}/v1/nwc/chat/completions`, {
+    const response = await fetch('/api/nwc/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -173,14 +170,102 @@ export default class extends Controller {
   }
 
   async callAPIWithWebLN() {
-    // WebLN flow requires two-step process:
-    // 1. Get invoice from server
-    // 2. Pay via WebLN
-    // 3. Submit paid invoice
+    const model = this.modelSelectTarget.value
 
-    // For now, show a message that WebLN direct integration is coming
-    // Users should use NWC connection string instead
-    throw new Error('WebLN direct payment coming soon. Please use NWC connection string instead.')
+    // Step 1: Get a quote (invoice) from the server
+    this.sendBtnTarget.textContent = 'Getting quote...'
+
+    const quoteResponse = await fetch('/api/webln/quote', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model,
+        messages: this.messages,
+        max_tokens: 1000
+      })
+    })
+
+    if (!quoteResponse.ok) {
+      const error = await quoteResponse.json()
+      throw new Error(error.error?.message || 'Failed to get quote')
+    }
+
+    const quote = await quoteResponse.json()
+
+    // Step 2: Pay the invoice via WebLN
+    this.sendBtnTarget.textContent = `Paying ${quote.amount_sats} sats...`
+
+    try {
+      await window.webln.sendPayment(quote.payment_request)
+    } catch (error) {
+      throw new Error('Payment cancelled or failed: ' + error.message)
+    }
+
+    // Step 3: Submit the payment hash to get the response
+    this.sendBtnTarget.textContent = 'Processing...'
+
+    const response = await fetch('/api/webln/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Payment-Hash': quote.payment_hash
+      }
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error?.message || 'Request failed')
+    }
+
+    // Capture cost headers
+    this.lastChargedSats = response.headers.get('X-Charged-Sats')
+    this.lastCostSats = response.headers.get('X-Cost-Sats')
+    this.lastRefundSats = response.headers.get('X-Refund-Sats')
+
+    const result = await response.json()
+
+    // Step 4: Process refund in background (don't block the response)
+    const refundSats = parseInt(this.lastRefundSats || '0', 10)
+    if (refundSats > 0) {
+      // Use setTimeout to ensure this runs after the current call stack completes
+      setTimeout(() => this.processRefund(refundSats), 100)
+    }
+
+    return result
+  }
+
+  async processRefund(amountSats) {
+    try {
+      this.sendBtnTarget.textContent = `Refunding ${amountSats} sats...`
+
+      // Request invoice from user's wallet
+      const invoice = await window.webln.makeInvoice({
+        amount: amountSats,
+        defaultMemo: 'Satilligence refund'
+      })
+
+      // Submit invoice to backend for payment
+      const refundResponse = await fetch('/api/webln/refund', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          payment_request: invoice.paymentRequest
+        })
+      })
+
+      if (refundResponse.ok) {
+        console.log('Refund processed successfully')
+      } else {
+        console.error('Refund failed')
+      }
+    } catch (error) {
+      console.error('Refund error:', error)
+      // Don't throw - refund failure shouldn't break the main flow
+    }
   }
 
   addMessage(role, content) {

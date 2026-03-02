@@ -1,0 +1,12 @@
+www.trandor.com {
+    # Web app
+    reverse_proxy web:80
+
+    # API routes proxied through Rails
+    # No need to expose API directly - Rails handles /api/* routes
+}
+
+# Redirect non-www to www
+trandor.com {
+    redir https://www.trandor.com{uri} permanent
+}

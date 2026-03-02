@@ -48,13 +48,13 @@ services:
       context: ./web
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3000:80"
     environment:
       - RAILS_ENV=production
-      - DATABASE_URL=postgres://satilligence:${DB_PASSWORD:-satilligence_dev}@db:5432/satilligence_web?sslmode=disable
+      - DATABASE_URL=postgres://satilligence:${DB_PASSWORD:-satilligence_dev}@db:5432/satilligence?sslmode=disable
       - SECRET_KEY_BASE=${SECRET_KEY_BASE}
       - RAILS_SERVE_STATIC_FILES=true
-      - API_URL=http://api:8080
+      - GO_API_URL=http://api:8080
     depends_on:
       db:
         condition: service_healthy

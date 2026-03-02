@@ -98,8 +98,17 @@ func main() {
 		cfg,
 	)
 
+	// Initialize WebLN handler (browser-based payments)
+	weblnHandler := api.NewWebLNHandler(
+		providerRouter,
+		billingCalc,
+		blinkClient,
+		openaiProvider, // for moderation
+		cfg,
+	)
+
 	// Setup router
-	router := api.NewRouter(handler, nwcHandler, l402Service, cfg)
+	router := api.NewRouter(handler, nwcHandler, weblnHandler, l402Service, cfg)
 
 	// Create server
 	server := &http.Server{
