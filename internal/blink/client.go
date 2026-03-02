@@ -86,6 +86,65 @@ func (c *Client) GetWalletID() string {
 	return c.walletID
 }
 
+// PaymentResult represents the result of a Lightning payment
+type PaymentResult struct {
+	Status   string
+	Preimage string
+}
+
+type lnInvoicePaymentSendResponse struct {
+	LnInvoicePaymentSend struct {
+		Status string `json:"status"`
+		Errors []struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		} `json:"errors"`
+	} `json:"lnInvoicePaymentSend"`
+}
+
+// PayInvoice pays a Lightning invoice from the Blink wallet
+func (c *Client) PayInvoice(ctx context.Context, paymentRequest string) (*PaymentResult, error) {
+	if c.apiKey == "" {
+		// Development mode
+		return &PaymentResult{
+			Status:   "SUCCESS",
+			Preimage: "dev_preimage",
+		}, nil
+	}
+
+	query := `
+		mutation LnInvoicePaymentSend($input: LnInvoicePaymentInput!) {
+			lnInvoicePaymentSend(input: $input) {
+				status
+				errors {
+					message
+					code
+				}
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"input": map[string]interface{}{
+			"paymentRequest": paymentRequest,
+			"walletId":       c.walletID,
+		},
+	}
+
+	var result lnInvoicePaymentSendResponse
+	if err := c.execute(ctx, query, variables, &result); err != nil {
+		return nil, err
+	}
+
+	if len(result.LnInvoicePaymentSend.Errors) > 0 {
+		return nil, fmt.Errorf("payment failed: %s", result.LnInvoicePaymentSend.Errors[0].Message)
+	}
+
+	return &PaymentResult{
+		Status: result.LnInvoicePaymentSend.Status,
+	}, nil
+}
+
 type graphQLRequest struct {
 	Query     string                 `json:"query"`
 	Variables map[string]interface{} `json:"variables,omitempty"`

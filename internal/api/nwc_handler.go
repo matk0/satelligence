@@ -42,6 +42,12 @@ func NewNWCHandler(
 }
 
 // ChatCompletions handles chat requests with NWC auto-payment
+// Flow:
+// 1. Estimate cost based on input + max output
+// 2. Charge 2x estimated cost
+// 3. Call AI provider
+// 4. Calculate actual cost
+// 5. Refund difference immediately via NWC
 func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -93,27 +99,33 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Estimate cost for this request
-	estimatedCost := h.billing.EstimateMaxCost(req.Model, req.MaxTokens)
+	// Step 1: Estimate cost based on input + max output
+	estimatedCost := h.billing.EstimateCost(req.Model, inputText, req.MaxTokens)
 
-	// Minimum 1 sat per request
-	if estimatedCost < 1 {
-		estimatedCost = 1
+	// Step 2: Charge 2x estimated cost
+	chargeAmount := estimatedCost * 2
+	if chargeAmount < 1 {
+		chargeAmount = 1
 	}
 
-	slog.Info("estimated cost", "sats", estimatedCost, "model", req.Model, "max_tokens", req.MaxTokens)
+	slog.Info("charging for request",
+		"model", req.Model,
+		"max_tokens", req.MaxTokens,
+		"estimated_sats", estimatedCost,
+		"charge_amount_2x", chargeAmount,
+	)
 
-	// Create invoice for this request
-	invoice, err := h.blinkClient.CreateInvoice(ctx, estimatedCost, fmt.Sprintf("Satilligence: %s request", req.Model))
+	// Create invoice for 2x amount
+	invoice, err := h.blinkClient.CreateInvoice(ctx, chargeAmount, fmt.Sprintf("Satilligence: %s request", req.Model))
 	if err != nil {
 		slog.Error("failed to create invoice", "error", err)
 		l402.WriteError(w, http.StatusInternalServerError, "invoice_error", "failed to create payment invoice")
 		return
 	}
 
-	slog.Info("invoice created", "amount", estimatedCost, "hash", invoice.PaymentHash)
+	slog.Info("invoice created", "amount", chargeAmount, "hash", invoice.PaymentHash)
 
-	// Pay via NWC
+	// Charge via NWC
 	preimage, err := nwcClient.PayInvoice(ctx, invoice.PaymentRequest, 30*time.Second)
 	if err != nil {
 		slog.Error("NWC payment failed", "error", err)
@@ -121,16 +133,15 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("payment received", "preimage", preimage)
+	slog.Info("payment received", "preimage", preimage, "amount", chargeAmount)
 
-	// Get provider
+	// Step 3: Call AI provider
 	prov, err := h.providerRouter.GetProvider(req.Model)
 	if err != nil {
 		l402.WriteError(w, http.StatusBadRequest, "invalid_model", "model not supported")
 		return
 	}
 
-	// Call provider
 	resp, err := prov.Chat(ctx, &req)
 	if err != nil {
 		if openaiErr, ok := err.(*openai.OpenAIError); ok {
@@ -144,7 +155,7 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate actual cost
+	// Step 4: Calculate actual cost
 	usage := billing.Usage{
 		PromptTokens:     resp.Usage.PromptTokens,
 		CompletionTokens: resp.Usage.CompletionTokens,
@@ -152,17 +163,53 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	actualCost, _ := h.billing.Calculate(usage)
 
+	// Step 5: Calculate and send refund
+	refundAmount := chargeAmount - actualCost.TotalSats
+	var refundStatus string
+
+	if refundAmount > 0 {
+		slog.Info("processing refund",
+			"charged", chargeAmount,
+			"actual_cost", actualCost.TotalSats,
+			"refund", refundAmount,
+		)
+
+		// Ask user's wallet to create invoice for refund
+		refundInvoice, err := nwcClient.MakeInvoice(ctx, refundAmount, "Satilligence refund", 30*time.Second)
+		if err != nil {
+			slog.Error("failed to create refund invoice", "error", err)
+			refundStatus = "failed: " + err.Error()
+		} else {
+			// Pay the refund invoice from our Blink wallet
+			_, err = h.blinkClient.PayInvoice(ctx, refundInvoice)
+			if err != nil {
+				slog.Error("failed to pay refund", "error", err)
+				refundStatus = "failed: " + err.Error()
+			} else {
+				slog.Info("refund sent", "amount", refundAmount)
+				refundStatus = "success"
+			}
+		}
+	} else {
+		refundStatus = "none"
+	}
+
 	slog.Info("request completed",
 		"model", req.Model,
 		"prompt_tokens", resp.Usage.PromptTokens,
 		"completion_tokens", resp.Usage.CompletionTokens,
-		"estimated_sats", estimatedCost,
-		"actual_sats", actualCost.TotalSats,
+		"cost_usd", fmt.Sprintf("$%.8f", actualCost.TotalUSD),
+		"charged_sats", chargeAmount,
+		"actual_cost_sats", actualCost.TotalSats,
+		"refund_sats", refundAmount,
+		"refund_status", refundStatus,
 	)
 
 	// Return response with cost info
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Charged-Sats", fmt.Sprintf("%d", chargeAmount))
 	w.Header().Set("X-Cost-Sats", fmt.Sprintf("%d", actualCost.TotalSats))
-	w.Header().Set("X-Paid-Sats", fmt.Sprintf("%d", estimatedCost))
+	w.Header().Set("X-Refund-Sats", fmt.Sprintf("%d", refundAmount))
+	w.Header().Set("X-Refund-Status", refundStatus)
 	json.NewEncoder(w).Encode(resp)
 }

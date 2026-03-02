@@ -61,6 +61,35 @@ func (c *Calculator) Calculate(usage Usage) (*Cost, error) {
 	}, nil
 }
 
+// EstimateCost estimates the cost based on input text and max output tokens
+// Returns estimated cost in sats (without safety multiplier - caller should apply)
+func (c *Calculator) EstimateCost(model string, inputText string, maxOutputTokens int) int64 {
+	price, ok := GetModelPrice(model)
+	if !ok {
+		price = ModelPricing["gpt-4o"]
+	}
+
+	// Estimate input tokens: ~4 characters per token (conservative for English)
+	estimatedInputTokens := len(inputText) / 4
+	if estimatedInputTokens < 10 {
+		estimatedInputTokens = 10 // minimum
+	}
+
+	// Calculate estimated cost
+	inputCostUSD := float64(estimatedInputTokens) * (price.InputPerMillion / 1_000_000)
+	outputCostUSD := float64(maxOutputTokens) * (price.OutputPerMillion / 1_000_000)
+	totalUSD := (inputCostUSD + outputCostUSD) * (1 + c.markupPercent/100)
+
+	sats := c.priceFeed.USDToSats(totalUSD)
+	if sats < 1 {
+		sats = 1
+	}
+
+	return sats
+}
+
+// EstimateMaxCost estimates maximum cost assuming max_tokens for both input and output
+// Used by L402 prepaid balance flow
 func (c *Calculator) EstimateMaxCost(model string, maxTokens int) int64 {
 	price, ok := GetModelPrice(model)
 	if !ok {

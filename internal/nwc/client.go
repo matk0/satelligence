@@ -42,6 +42,11 @@ type Client struct {
 	connected  bool
 }
 
+// WalletPubkey returns the wallet's public key (used for credit tracking)
+func (c *Client) WalletPubkey() string {
+	return c.connInfo.WalletPubkey
+}
+
 // ParseConnectionURL parses a nostr+walletconnect:// URL
 func ParseConnectionURL(nwcURL string) (*ConnectionInfo, error) {
 	// Format: nostr+walletconnect://pubkey?relay=wss://...&secret=...
@@ -132,53 +137,71 @@ func (c *Client) Close() {
 	}
 }
 
-// PayInvoiceRequest represents a pay_invoice NWC request
-type PayInvoiceRequest struct {
-	Method string `json:"method"`
-	Params struct {
-		Invoice string `json:"invoice"`
-	} `json:"params"`
+// NWCRequest represents a generic NWC request
+type NWCRequest struct {
+	Method string      `json:"method"`
+	Params interface{} `json:"params"`
 }
 
-// PayInvoiceResponse represents a pay_invoice NWC response
-type PayInvoiceResponse struct {
-	ResultType string `json:"result_type"`
-	Result     *struct {
-		Preimage string `json:"preimage"`
-	} `json:"result,omitempty"`
-	Error *struct {
+// PayInvoiceParams for pay_invoice method
+type PayInvoiceParams struct {
+	Invoice string `json:"invoice"`
+}
+
+// MakeInvoiceParams for make_invoice method
+type MakeInvoiceParams struct {
+	Amount      int64  `json:"amount"` // in millisats
+	Description string `json:"description,omitempty"`
+}
+
+// NWCResponse represents a generic NWC response
+type NWCResponse struct {
+	ResultType string          `json:"result_type"`
+	Result     json.RawMessage `json:"result,omitempty"`
+	Error      *struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
 }
 
-// PayInvoice sends a payment request via NWC and waits for confirmation
-func (c *Client) PayInvoice(ctx context.Context, invoice string, timeout time.Duration) (preimage string, err error) {
+// PayInvoiceResult for pay_invoice response
+type PayInvoiceResult struct {
+	Preimage string `json:"preimage"`
+}
+
+// MakeInvoiceResult for make_invoice response
+type MakeInvoiceResult struct {
+	Invoice     string `json:"invoice"`
+	PaymentHash string `json:"payment_hash"`
+}
+
+// sendRequest sends an NWC request and returns the response
+func (c *Client) sendRequest(ctx context.Context, method string, params interface{}, timeout time.Duration) (*NWCResponse, error) {
 	if err := c.Connect(ctx); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// Create the request payload
-	reqPayload := PayInvoiceRequest{
-		Method: "pay_invoice",
+	reqPayload := NWCRequest{
+		Method: method,
+		Params: params,
 	}
-	reqPayload.Params.Invoice = invoice
 
 	payloadBytes, err := json.Marshal(reqPayload)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	// Compute shared secret for NIP-04 encryption
 	sharedSecret, err := nip04.ComputeSharedSecret(c.connInfo.WalletPubkey, c.secretKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to compute shared secret: %w", err)
+		return nil, fmt.Errorf("failed to compute shared secret: %w", err)
 	}
 
 	// Encrypt the payload using NIP-04
 	encryptedContent, err := nip04.Encrypt(string(payloadBytes), sharedSecret)
 	if err != nil {
-		return "", fmt.Errorf("failed to encrypt request: %w", err)
+		return nil, fmt.Errorf("failed to encrypt request: %w", err)
 	}
 
 	// Create the Nostr event
@@ -194,7 +217,7 @@ func (c *Client) PayInvoice(ctx context.Context, invoice string, timeout time.Du
 
 	// Sign the event
 	if err := event.Sign(c.secretKey); err != nil {
-		return "", fmt.Errorf("failed to sign event: %w", err)
+		return nil, fmt.Errorf("failed to sign event: %w", err)
 	}
 
 	// Subscribe to responses before publishing
@@ -209,46 +232,85 @@ func (c *Client) PayInvoice(ctx context.Context, invoice string, timeout time.Du
 
 	sub, err := c.relay.Subscribe(timeoutCtx, filters)
 	if err != nil {
-		return "", fmt.Errorf("failed to subscribe: %w", err)
+		return nil, fmt.Errorf("failed to subscribe: %w", err)
 	}
 	defer sub.Close()
 
 	// Publish the request
 	if err := c.relay.Publish(timeoutCtx, event); err != nil {
-		return "", fmt.Errorf("failed to publish request: %w", err)
+		return nil, fmt.Errorf("failed to publish request: %w", err)
 	}
 
 	// Wait for response
 	select {
 	case evt := <-sub.Events:
-		// Compute shared secret for decryption
-		sharedSecret, err := nip04.ComputeSharedSecret(c.connInfo.WalletPubkey, c.secretKey)
-		if err != nil {
-			return "", fmt.Errorf("failed to compute shared secret: %w", err)
-		}
-
 		// Decrypt the response
 		decrypted, err := nip04.Decrypt(evt.Content, sharedSecret)
 		if err != nil {
-			return "", fmt.Errorf("failed to decrypt response: %w", err)
+			return nil, fmt.Errorf("failed to decrypt response: %w", err)
 		}
 
-		var response PayInvoiceResponse
+		var response NWCResponse
 		if err := json.Unmarshal([]byte(decrypted), &response); err != nil {
-			return "", fmt.Errorf("failed to parse response: %w", err)
+			return nil, fmt.Errorf("failed to parse response: %w", err)
 		}
 
-		if response.Error != nil {
-			return "", fmt.Errorf("%w: %s - %s", ErrPaymentFailed, response.Error.Code, response.Error.Message)
-		}
-
-		if response.Result == nil || response.Result.Preimage == "" {
-			return "", ErrPaymentFailed
-		}
-
-		return response.Result.Preimage, nil
+		return &response, nil
 
 	case <-timeoutCtx.Done():
-		return "", ErrPaymentTimeout
+		return nil, ErrPaymentTimeout
 	}
+}
+
+// PayInvoice sends a payment request via NWC and waits for confirmation
+func (c *Client) PayInvoice(ctx context.Context, invoice string, timeout time.Duration) (preimage string, err error) {
+	resp, err := c.sendRequest(ctx, "pay_invoice", PayInvoiceParams{Invoice: invoice}, timeout)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.Error != nil {
+		return "", fmt.Errorf("%w: %s - %s", ErrPaymentFailed, resp.Error.Code, resp.Error.Message)
+	}
+
+	var result PayInvoiceResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return "", fmt.Errorf("failed to parse result: %w", err)
+	}
+
+	if result.Preimage == "" {
+		return "", ErrPaymentFailed
+	}
+
+	return result.Preimage, nil
+}
+
+// MakeInvoice requests the user's wallet to create an invoice (for refunds)
+// amountSats is in satoshis (will be converted to millisats)
+func (c *Client) MakeInvoice(ctx context.Context, amountSats int64, description string, timeout time.Duration) (invoice string, err error) {
+	// NWC uses millisats
+	amountMsats := amountSats * 1000
+
+	resp, err := c.sendRequest(ctx, "make_invoice", MakeInvoiceParams{
+		Amount:      amountMsats,
+		Description: description,
+	}, timeout)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.Error != nil {
+		return "", fmt.Errorf("make_invoice failed: %s - %s", resp.Error.Code, resp.Error.Message)
+	}
+
+	var result MakeInvoiceResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return "", fmt.Errorf("failed to parse result: %w", err)
+	}
+
+	if result.Invoice == "" {
+		return "", errors.New("no invoice in response")
+	}
+
+	return result.Invoice, nil
 }

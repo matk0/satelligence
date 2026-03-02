@@ -89,7 +89,7 @@ func main() {
 		cfg,
 	)
 
-	// Initialize NWC handler (seamless pay-per-request)
+	// Initialize NWC handler (seamless pay-per-request with immediate refund)
 	nwcHandler := api.NewNWCHandler(
 		providerRouter,
 		billingCalc,
