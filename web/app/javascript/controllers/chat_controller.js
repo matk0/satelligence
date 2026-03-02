@@ -104,25 +104,31 @@ export default class extends Controller {
     this.sendBtnTarget.textContent = 'Sending...'
 
     // Add assistant placeholder
-    const assistantDiv = this.addMessage('assistant', '...')
+    const assistantDiv = this.addMessage('assistant', '')
+    const contentSpan = assistantDiv.querySelector('.message-content')
 
     try {
       // Build messages array
       this.messages.push({ role: 'user', content })
 
-      const response = await this.callAPI()
-
-      // Update assistant message
-      const assistantContent = response.choices[0].message.content
-      assistantDiv.querySelector('.message-content').textContent = assistantContent
-      this.messages.push({ role: 'assistant', content: assistantContent })
+      if (this.useWebLN) {
+        // Streaming flow for WebLN
+        const assistantContent = await this.callAPIWithWebLNStream(contentSpan)
+        this.messages.push({ role: 'assistant', content: assistantContent })
+      } else {
+        // Non-streaming flow for NWC
+        const response = await this.callAPI()
+        const assistantContent = response.choices[0].message.content
+        contentSpan.textContent = assistantContent
+        this.messages.push({ role: 'assistant', content: assistantContent })
+      }
 
       // Show cost info
       this.showCostInfo()
     } catch (error) {
       console.error('API error:', error)
-      assistantDiv.querySelector('.message-content').textContent = 'Error: ' + error.message
-      assistantDiv.classList.add('border-red-500')
+      contentSpan.textContent = 'Error: ' + error.message
+      assistantDiv.querySelector('div').classList.add('border-red-500')
     } finally {
       this.isProcessing = false
       this.inputTarget.disabled = false
@@ -170,21 +176,15 @@ export default class extends Controller {
   }
 
   async callAPIWithWebLN() {
+    // Non-streaming fallback (kept for compatibility)
     const model = this.modelSelectTarget.value
 
-    // Step 1: Get a quote (invoice) from the server
     this.sendBtnTarget.textContent = 'Getting quote...'
 
     const quoteResponse = await fetch('/api/webln/quote', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        messages: this.messages,
-        max_tokens: 1000
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: this.messages, max_tokens: 1000 })
     })
 
     if (!quoteResponse.ok) {
@@ -194,7 +194,6 @@ export default class extends Controller {
 
     const quote = await quoteResponse.json()
 
-    // Step 2: Pay the invoice via WebLN
     this.sendBtnTarget.textContent = `Paying ${quote.amount_sats} sats...`
 
     try {
@@ -203,15 +202,11 @@ export default class extends Controller {
       throw new Error('Payment cancelled or failed: ' + error.message)
     }
 
-    // Step 3: Submit the payment hash to get the response
     this.sendBtnTarget.textContent = 'Processing...'
 
     const response = await fetch('/api/webln/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Payment-Hash': quote.payment_hash
-      }
+      headers: { 'Content-Type': 'application/json', 'X-Payment-Hash': quote.payment_hash }
     })
 
     if (!response.ok) {
@@ -219,21 +214,109 @@ export default class extends Controller {
       throw new Error(error.error?.message || 'Request failed')
     }
 
-    // Capture cost headers
     this.lastChargedSats = response.headers.get('X-Charged-Sats')
     this.lastCostSats = response.headers.get('X-Cost-Sats')
     this.lastRefundSats = response.headers.get('X-Refund-Sats')
 
     const result = await response.json()
 
-    // Step 4: Process refund in background (don't block the response)
     const refundSats = parseInt(this.lastRefundSats || '0', 10)
     if (refundSats > 0) {
-      // Use setTimeout to ensure this runs after the current call stack completes
       setTimeout(() => this.processRefund(refundSats), 100)
     }
 
     return result
+  }
+
+  // Streaming version for WebLN - updates contentSpan in real-time
+  async callAPIWithWebLNStream(contentSpan) {
+    const model = this.modelSelectTarget.value
+
+    // Step 1: Get a quote
+    this.sendBtnTarget.textContent = 'Getting quote...'
+
+    const quoteResponse = await fetch('/api/webln/quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: this.messages, max_tokens: 1000 })
+    })
+
+    if (!quoteResponse.ok) {
+      const error = await quoteResponse.json()
+      throw new Error(error.error?.message || 'Failed to get quote')
+    }
+
+    const quote = await quoteResponse.json()
+
+    // Step 2: Pay via WebLN
+    this.sendBtnTarget.textContent = `Paying ${quote.amount_sats} sats...`
+
+    try {
+      await window.webln.sendPayment(quote.payment_request)
+    } catch (error) {
+      throw new Error('Payment cancelled or failed: ' + error.message)
+    }
+
+    // Step 3: Stream the response
+    this.sendBtnTarget.textContent = 'Streaming...'
+
+    const response = await fetch('/api/webln/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Payment-Hash': quote.payment_hash }
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error?.message || 'Request failed')
+    }
+
+    this.lastChargedSats = response.headers.get('X-Charged-Sats')
+
+    // Read the stream
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let fullContent = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value, { stream: true })
+      const lines = chunk.split('\n')
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          if (data === '[DONE]') continue
+
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.choices?.[0]?.delta?.content) {
+              fullContent += parsed.choices[0].delta.content
+              contentSpan.textContent = fullContent
+              // Auto-scroll
+              this.messagesTarget.scrollTop = this.messagesTarget.scrollHeight
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        } else if (line.startsWith('event: metadata')) {
+          // Next line contains metadata
+        } else if (line.startsWith('data: ') && line.includes('refund_sats')) {
+          try {
+            const metadata = JSON.parse(line.slice(6))
+            this.lastCostSats = metadata.cost_sats
+            this.lastRefundSats = metadata.refund_sats
+
+            if (metadata.refund_sats > 0) {
+              setTimeout(() => this.processRefund(metadata.refund_sats), 100)
+            }
+          } catch (e) {}
+        }
+      }
+    }
+
+    return fullContent
   }
 
   async processRefund(amountSats) {

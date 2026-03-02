@@ -8,6 +8,7 @@ Rails.application.routes.draw do
   scope "/api" do
     post "webln/quote", to: "api#webln_quote"
     post "webln/chat", to: "api#webln_chat"
+    post "webln/chat/stream", to: "api#webln_chat_stream"
     post "webln/refund", to: "api#webln_refund"
     post "nwc/chat", to: "api#nwc_chat"
     get "models", to: "api#models"

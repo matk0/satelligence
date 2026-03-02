@@ -1,12 +1,14 @@
 package openai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/satilligence/satilligence/internal/provider"
@@ -107,6 +109,88 @@ type OpenAIError struct {
 
 func (e *OpenAIError) Error() string {
 	return fmt.Sprintf("openai error: %s (type: %s, code: %s)", e.Message, e.Type, e.Code)
+}
+
+// ChatStream creates a streaming chat completion
+func (p *Provider) ChatStream(ctx context.Context, req *provider.ChatRequest) (*provider.StreamReader, error) {
+	if !p.SupportsModel(req.Model) {
+		return nil, provider.ErrModelNotSupported
+	}
+
+	// Create streaming request
+	streamReq := struct {
+		*provider.ChatRequest
+		Stream         bool `json:"stream"`
+		StreamOptions  *struct {
+			IncludeUsage bool `json:"include_usage"`
+		} `json:"stream_options,omitempty"`
+	}{
+		ChatRequest: req,
+		Stream:      true,
+		StreamOptions: &struct {
+			IncludeUsage bool `json:"include_usage"`
+		}{IncludeUsage: true},
+	}
+
+	body, err := json.Marshal(streamReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", OpenAIBaseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	// Use a client without timeout for streaming
+	client := &http.Client{}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		respBody, _ := io.ReadAll(resp.Body)
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Type    string `json:"type"`
+				Code    string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.Error.Message != "" {
+			return nil, &OpenAIError{
+				StatusCode: resp.StatusCode,
+				Message:    errResp.Error.Message,
+				Type:       errResp.Error.Type,
+				Code:       errResp.Error.Code,
+			}
+		}
+		return nil, fmt.Errorf("openai error: status %d", resp.StatusCode)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	return provider.NewStreamReader(resp.Body, resp.Body.Close, scanner), nil
+}
+
+// ParseStreamChunk parses a SSE data line into a StreamChunk
+func ParseStreamChunk(line string) (*provider.StreamChunk, error) {
+	if !strings.HasPrefix(line, "data: ") {
+		return nil, nil
+	}
+	data := strings.TrimPrefix(line, "data: ")
+	if data == "[DONE]" {
+		return nil, nil
+	}
+	var chunk provider.StreamChunk
+	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+		return nil, err
+	}
+	return &chunk, nil
 }
 
 // Moderate checks content against OpenAI's moderation API

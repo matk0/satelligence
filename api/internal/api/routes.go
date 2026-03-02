@@ -48,6 +48,7 @@ func NewRouter(handler *Handler, nwcHandler *NWCHandler, weblnHandler *WebLNHand
 	// WebLN endpoints (browser-based payments)
 	r.Post("/v1/webln/quote", weblnHandler.CreateQuote)
 	r.Post("/v1/webln/chat/completions", weblnHandler.ChatCompletions)
+	r.Post("/v1/webln/chat/completions/stream", weblnHandler.ChatCompletionsStream)
 	r.Post("/v1/webln/refund", weblnHandler.Refund)
 
 	// L402 prepaid balance routes (legacy)

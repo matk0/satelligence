@@ -51,6 +51,57 @@ type Provider interface {
 	SupportsModel(model string) bool
 }
 
+// StreamProvider extends Provider with streaming support
+type StreamProvider interface {
+	Provider
+	ChatStream(ctx context.Context, req *ChatRequest) (*StreamReader, error)
+}
+
+// StreamChunk represents a single chunk from a streaming response
+type StreamChunk struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	Model   string `json:"model"`
+	Choices []struct {
+		Index int `json:"index"`
+		Delta struct {
+			Role    string `json:"role,omitempty"`
+			Content string `json:"content,omitempty"`
+		} `json:"delta"`
+		FinishReason *string `json:"finish_reason"`
+	} `json:"choices"`
+	Usage *ChatUsage `json:"usage,omitempty"`
+}
+
+// StreamReader wraps the streaming response
+type StreamReader struct {
+	reader   interface{ Read([]byte) (int, error) }
+	closer   func() error
+	scanner  interface{ Scan() bool; Text() string; Err() error }
+}
+
+func NewStreamReader(reader interface{ Read([]byte) (int, error) }, closer func() error, scanner interface{ Scan() bool; Text() string; Err() error }) *StreamReader {
+	return &StreamReader{reader: reader, closer: closer, scanner: scanner}
+}
+
+func (s *StreamReader) Next() (string, bool, error) {
+	if !s.scanner.Scan() {
+		if err := s.scanner.Err(); err != nil {
+			return "", false, err
+		}
+		return "", false, nil
+	}
+	return s.scanner.Text(), true, nil
+}
+
+func (s *StreamReader) Close() error {
+	if s.closer != nil {
+		return s.closer()
+	}
+	return nil
+}
+
 // ModerationResult represents content moderation output
 type ModerationResult struct {
 	Flagged    bool

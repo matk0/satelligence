@@ -1,6 +1,7 @@
 require "net/http"
 
 class ApiController < ApplicationController
+  include ActionController::Live
   skip_forgery_protection
 
   # Internal Go API base URL
@@ -18,6 +19,39 @@ class ApiController < ApplicationController
       "X-Payment-Hash" => request.headers["X-Payment-Hash"]
     })
     proxy_response(response, %w[X-Charged-Sats X-Cost-Sats X-Refund-Sats])
+  end
+
+  # POST /api/webln/chat/stream - SSE streaming endpoint
+  def webln_chat_stream
+    uri = URI("#{GO_API_BASE}/v1/webln/chat/completions/stream")
+
+    response.headers["Content-Type"] = "text/event-stream"
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Connection"] = "keep-alive"
+    response.headers["X-Accel-Buffering"] = "no"
+
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.read_timeout = 300
+
+    req = Net::HTTP::Post.new(uri.path)
+    req["Content-Type"] = "application/json"
+    req["X-Payment-Hash"] = request.headers["X-Payment-Hash"]
+
+    http.request(req) do |upstream_response|
+      # Copy charged sats header if present
+      if upstream_response["X-Charged-Sats"]
+        response.headers["X-Charged-Sats"] = upstream_response["X-Charged-Sats"]
+      end
+
+      upstream_response.read_body do |chunk|
+        response.stream.write(chunk)
+      end
+    end
+  rescue StandardError => e
+    Rails.logger.error("Stream error: #{e.message}")
+    response.stream.write("event: error\ndata: {\"error\": \"#{e.message}\"}\n\n")
+  ensure
+    response.stream.close
   end
 
   # POST /api/webln/refund
