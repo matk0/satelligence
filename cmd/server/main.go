@@ -79,7 +79,7 @@ func main() {
 	providerRouter.Register("gpt-4o-mini", openaiProvider)
 	providerRouter.Register("gpt-4-turbo", openaiProvider)
 
-	// Initialize API handler
+	// Initialize API handler (L402 legacy)
 	handler := api.NewHandler(
 		l402Service,
 		sessionStore,
@@ -89,8 +89,17 @@ func main() {
 		cfg,
 	)
 
+	// Initialize NWC handler (seamless pay-per-request)
+	nwcHandler := api.NewNWCHandler(
+		providerRouter,
+		billingCalc,
+		blinkClient,
+		openaiProvider, // for moderation
+		cfg,
+	)
+
 	// Setup router
-	router := api.NewRouter(handler, l402Service, cfg)
+	router := api.NewRouter(handler, nwcHandler, l402Service, cfg)
 
 	// Create server
 	server := &http.Server{

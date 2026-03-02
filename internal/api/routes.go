@@ -9,7 +9,7 @@ import (
 	"github.com/satilligence/satilligence/internal/l402"
 )
 
-func NewRouter(handler *Handler, l402Service *l402.Service, cfg *config.Config) http.Handler {
+func NewRouter(handler *Handler, nwcHandler *NWCHandler, l402Service *l402.Service, cfg *config.Config) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -24,7 +24,11 @@ func NewRouter(handler *Handler, l402Service *l402.Service, cfg *config.Config) 
 	// List models (no auth required)
 	r.Get("/v1/models", handler.ListModels)
 
-	// Protected routes
+	// NWC pay-per-request endpoint (seamless)
+	// Use X-NWC header with your Nostr Wallet Connect URL
+	r.Post("/v1/nwc/chat/completions", nwcHandler.ChatCompletions)
+
+	// L402 prepaid balance routes (legacy)
 	r.Group(func(r chi.Router) {
 		r.Use(L402Middleware(l402Service, handler.sessionStore))
 		r.Use(RateLimitMiddleware(cfg))
