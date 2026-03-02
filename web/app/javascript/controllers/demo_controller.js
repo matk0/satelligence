@@ -6,6 +6,7 @@ export default class extends Controller {
     "messageInput",
     "modelSelect",
     "sendBtn",
+    "albyBtn",
     "timeline", "timelineItems",
     "response", "responseContent",
     "costDisplay", "refundDisplay"
@@ -13,6 +14,35 @@ export default class extends Controller {
 
   connect() {
     this.loadModels()
+    this.checkAlbyAvailable()
+  }
+
+  checkAlbyAvailable() {
+    // Hide Alby button if WebLN not available
+    if (!window.webln && this.hasAlbyBtnTarget) {
+      this.albyBtnTarget.style.display = 'none'
+    }
+  }
+
+  async connectAlby() {
+    if (!window.webln) {
+      alert('Alby extension not detected. Please install it from getalby.com')
+      return
+    }
+
+    try {
+      await window.webln.enable()
+      // Try to get NWC connection from Alby
+      const nwc = await window.webln.nostr.getConnectURI?.()
+      if (nwc) {
+        this.nwcInputTarget.value = nwc
+      } else {
+        alert('Connected to Alby! However, NWC export is not available. Please copy your NWC string manually from Alby settings.')
+      }
+    } catch (error) {
+      console.error('Alby connection error:', error)
+      alert('Failed to connect to Alby: ' + error.message)
+    }
   }
 
   async loadModels() {

@@ -2,7 +2,6 @@ Rails.application.routes.draw do
   root "pages#home"
 
   get "docs", to: "pages#docs"
-  get "chat", to: "chat#index"
 
   # API proxy to Go backend
   scope "/api" do
