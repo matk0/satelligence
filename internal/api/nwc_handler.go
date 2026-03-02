@@ -96,9 +96,9 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// Estimate cost for this request
 	estimatedCost := h.billing.EstimateMaxCost(req.Model, req.MaxTokens)
 
-	// Minimum 10 sats per request
-	if estimatedCost < 10 {
-		estimatedCost = 10
+	// Minimum 1 sat per request
+	if estimatedCost < 1 {
+		estimatedCost = 1
 	}
 
 	slog.Info("estimated cost", "sats", estimatedCost, "model", req.Model, "max_tokens", req.MaxTokens)
