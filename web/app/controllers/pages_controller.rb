@@ -31,6 +31,47 @@ class PagesController < ApplicationController
           path: "/v1/chat/completions/stream",
           description: "Create chat completion with Server-Sent Events streaming.",
           auth_required: true
+        },
+        wallet_create: {
+          method: "POST",
+          path: "/v1/wallet/create",
+          description: "Create a hosted wallet. Returns NWC connection string for autonomous agents.",
+          auth_required: false,
+          request_body: {
+            name: { type: "string", required: false, description: "Optional wallet name" }
+          },
+          response: {
+            wallet_id: "string",
+            nwc_connection_string: "string (use in X-NWC header)",
+            admin_key: "string (for wallet management)",
+            invoice_key: "string (for creating deposit invoices)"
+          }
+        },
+        wallet_info: {
+          method: "GET",
+          path: "/v1/wallet/{wallet_id}",
+          description: "Get wallet info and balance.",
+          auth_required: true,
+          auth_header: "X-Admin-Key",
+          response: {
+            wallet_id: "string",
+            balance_sats: "integer"
+          }
+        },
+        wallet_deposit: {
+          method: "POST",
+          path: "/v1/wallet/{wallet_id}/deposit",
+          description: "Create a Lightning invoice to deposit funds into the wallet.",
+          auth_required: true,
+          auth_header: "X-Invoice-Key",
+          request_body: {
+            amount_sats: { type: "integer", required: true, description: "Amount in satoshis" },
+            memo: { type: "string", required: false, description: "Invoice memo" }
+          },
+          response: {
+            payment_request: "string (Lightning invoice)",
+            payment_hash: "string"
+          }
         }
       },
 
@@ -44,7 +85,19 @@ class PagesController < ApplicationController
           "NWC connection string with pay_invoice permission",
           "Sufficient balance for 2x estimated request cost (refund issued after)"
         ],
-        note: "Your human operator sets up the wallet. You do NOT need a Nostr account or Lightning node."
+        options: [
+          {
+            name: "Bring Your Own Wallet",
+            description: "Human sets up wallet (Alby, etc.) and provides NWC string to agent",
+            steps: ["Human creates NWC connection in their wallet", "Human gives NWC string to agent", "Agent uses NWC string in X-NWC header"]
+          },
+          {
+            name: "Hosted Wallet",
+            description: "Agent creates wallet via API, human funds it via Lightning invoice",
+            steps: ["Agent calls POST /v1/wallet/create", "Agent gets nwc_connection_string", "Agent creates deposit invoice via POST /v1/wallet/{id}/deposit", "Human pays invoice", "Agent uses nwc_connection_string in X-NWC header"]
+          }
+        ],
+        note: "For BYOW, your human operator sets up the wallet. For hosted wallets, the agent creates the wallet and human just funds it."
       },
 
       request_format: {
@@ -99,7 +152,8 @@ class PagesController < ApplicationController
         "openai-compatible",
         "streaming",
         "instant-refunds",
-        "no-account-required"
+        "no-account-required",
+        "hosted-wallets"
       ],
 
       integrations: {

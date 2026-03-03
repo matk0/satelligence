@@ -64,13 +64,47 @@
   3. We call AI provider and return response
   4. We refund (charged - actual_cost) back to your wallet
 
-<span class="text-cyan-400">SETUP REQUIREMENTS:</span>
+<span class="text-cyan-400">SETUP REQUIREMENTS (Option 1 - Bring Your Own Wallet):</span>
   1. Bitcoin Lightning wallet with NWC support
   2. NWC connection string with pay_invoice permission
   3. Sufficient balance for 2x estimated request cost
   <span class="text-gray-500"># Note: You do NOT need a Nostr account or Lightning node.</span>
   <span class="text-gray-500"># Your human operator sets up the wallet and gives you the NWC string.</span>
   <span class="text-gray-500"># See "NWC Setup Guide" section below for human-readable instructions.</span>
+
+<span class="text-cyan-400">SETUP REQUIREMENTS (Option 2 - Hosted Wallet):</span>
+  <span class="text-gray-500"># For autonomous agents that need their own wallet</span>
+  1. POST /v1/wallet/create -> get wallet_id, nwc_connection_string, admin_key
+  2. Ask human to pay deposit invoice via /v1/wallet/{id}/deposit
+  3. Use nwc_connection_string in X-NWC header for all API calls
+  4. Check balance with GET /v1/wallet/{id}
+
+<span class="text-yellow-400">POST /v1/wallet/create</span>
+  <span class="text-gray-500">Creates a hosted wallet. No authentication required.</span>
+  <span class="text-cyan-400">Request Body (JSON):</span>
+    name: string  <span class="text-gray-500"># Optional wallet name</span>
+  <span class="text-cyan-400">Response:</span>
+    wallet_id: string
+    nwc_connection_string: string  <span class="text-gray-500"># Use this in X-NWC header</span>
+    admin_key: string              <span class="text-gray-500"># For wallet management</span>
+    invoice_key: string            <span class="text-gray-500"># For creating invoices</span>
+
+<span class="text-yellow-400">GET /v1/wallet/{wallet_id}</span>
+  <span class="text-cyan-400">Required Headers:</span>
+    X-Admin-Key: &lt;admin_key from create response&gt;
+  <span class="text-cyan-400">Response:</span>
+    wallet_id: string
+    balance_sats: integer
+
+<span class="text-yellow-400">POST /v1/wallet/{wallet_id}/deposit</span>
+  <span class="text-cyan-400">Required Headers:</span>
+    X-Invoice-Key: &lt;invoice_key from create response&gt;
+  <span class="text-cyan-400">Request Body (JSON):</span>
+    amount_sats: integer  <span class="text-gray-500"># Required</span>
+    memo: string          <span class="text-gray-500"># Optional</span>
+  <span class="text-cyan-400">Response:</span>
+    payment_request: string  <span class="text-gray-500"># Lightning invoice for human to pay</span>
+    payment_hash: string
 
 <span class="text-cyan-400">OPENAI-COMPATIBLE PROXY:</span>
   <span class="text-gray-500"># If your framework requires OPENAI_BASE_URL + OPENAI_API_KEY format,</span>
@@ -345,6 +379,106 @@ export OPENAI_API_KEY=unused</code></pre>
             <li class="flex items-start gap-3">
               <span class="text-red-400">&#x2022;</span>
               <span><strong class="text-white">Treat NWC strings as secrets</strong> - Anyone with the string can spend up to your configured limits</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hosted Wallets -->
+    <section class="mb-16">
+      <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+        <span class="text-yellow-400">&#x1F4B3;</span> Hosted Wallets (For Autonomous Agents)
+      </h2>
+
+      <div class="prose prose-invert max-w-none">
+        <p class="text-gray-300 mb-6">
+          Autonomous AI agents can create their own hosted Lightning wallets through Trandor.
+          This allows agents to manage their own funds without requiring a human to set up external wallet infrastructure.
+        </p>
+
+        <div class="bg-emerald-900/20 border border-emerald-500/30 rounded-lg p-6 mb-8">
+          <h3 class="text-xl font-semibold text-emerald-400 mb-4">How It Works</h3>
+          <ol class="space-y-3 text-gray-300">
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">1</span>
+              <div>
+                <strong class="text-white">Agent creates wallet</strong>
+                <p class="text-sm text-gray-400">POST /v1/wallet/create - Returns NWC connection string and wallet keys</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">2</span>
+              <div>
+                <strong class="text-white">Agent requests deposit</strong>
+                <p class="text-sm text-gray-400">POST /v1/wallet/{id}/deposit - Creates Lightning invoice for human to pay</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">3</span>
+              <div>
+                <strong class="text-white">Human funds wallet</strong>
+                <p class="text-sm text-gray-400">Human pays the Lightning invoice from any wallet</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">4</span>
+              <div>
+                <strong class="text-white">Agent uses API</strong>
+                <p class="text-sm text-gray-400">Agent uses NWC connection string in X-NWC header for all requests</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <!-- Agent Example -->
+        <h3 class="text-xl font-semibold text-white mb-4">Example: Agent Workflow</h3>
+        <div class="bg-slate-800 rounded-lg p-4 mb-6 overflow-x-auto">
+          <pre class="text-sm text-gray-300"><code><span class="text-green-400"># 1. Create wallet</span>
+curl -X POST "https://api.trandor.com/v1/wallet/create" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-agent"}'
+
+<span class="text-green-400"># Response:</span>
+<span class="text-gray-500"># {</span>
+<span class="text-gray-500">#   "wallet_id": "abc123",</span>
+<span class="text-gray-500">#   "nwc_connection_string": "nostr+walletconnect://...",</span>
+<span class="text-gray-500">#   "admin_key": "...",</span>
+<span class="text-gray-500">#   "invoice_key": "..."</span>
+<span class="text-gray-500"># }</span>
+
+<span class="text-green-400"># 2. Create deposit invoice (give to human)</span>
+curl -X POST "https://api.trandor.com/v1/wallet/abc123/deposit" \
+  -H "Content-Type: application/json" \
+  -H "X-Invoice-Key: &lt;invoice_key&gt;" \
+  -d '{"amount_sats": 10000, "memo": "Fund my AI agent"}'
+
+<span class="text-green-400"># 3. Check balance</span>
+curl "https://api.trandor.com/v1/wallet/abc123" \
+  -H "X-Admin-Key: &lt;admin_key&gt;"
+
+<span class="text-green-400"># 4. Use the NWC string for API calls</span>
+curl -X POST "https://api.trandor.com/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "X-NWC: &lt;nwc_connection_string&gt;" \
+  -d '{"model": "gpt-4.1", "messages": [...]}'</code></pre>
+        </div>
+
+        <!-- Security Note -->
+        <div class="bg-amber-900/20 border border-amber-500/30 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-amber-400 mb-4">Security Notes</h3>
+          <ul class="space-y-2 text-gray-300 text-sm">
+            <li class="flex items-start gap-2">
+              <span class="text-amber-400">&#x26A0;</span>
+              <span><strong class="text-white">Store keys securely</strong> - The admin_key and nwc_connection_string allow spending. Treat them as secrets.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-amber-400">&#x26A0;</span>
+              <span><strong class="text-white">wallet_id is public</strong> - The wallet_id can be shared; it only allows viewing balance with the proper key.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-amber-400">&#x26A0;</span>
+              <span><strong class="text-white">Fund conservatively</strong> - Only deposit what the agent needs. You can always add more later.</span>
             </li>
           </ul>
         </div>

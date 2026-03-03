@@ -27,7 +27,12 @@ services:
       - MACAROON_SECRET=${MACAROON_SECRET}
       - MARKUP_PERCENT=${MARKUP_PERCENT:-5}
       - MIN_DEPOSIT_SATS=${MIN_DEPOSIT_SATS:-5000}
+      - LNBITS_URL=http://lnbits:5000
+      - LNBITS_ADMIN_KEY=${LNBITS_ADMIN_KEY}
       - PORT=8080
+    depends_on:
+      lnbits:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
       interval: 30s
@@ -51,6 +56,28 @@ services:
       api:
         condition: service_healthy
 
+  # LNbits - Hosted wallet service
+  lnbits:
+    image: lnbits/lnbits:latest
+    restart: unless-stopped
+    environment:
+      - LNBITS_BACKEND_WALLET_CLASS=BlinkWallet
+      - BLINK_API_ENDPOINT=https://api.blink.sv/graphql
+      - BLINK_WS_ENDPOINT=wss://ws.blink.sv/graphql
+      - BLINK_TOKEN=${BLINK_API_KEY}
+      - LNBITS_ADMIN_UI=true
+      - LNBITS_SITE_TITLE=Trandor Wallets
+      - LNBITS_DEFAULT_WALLET_NAME=Agent Wallet
+    volumes:
+      - lnbits_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   caddy_data:
   caddy_config:
+  lnbits_data:

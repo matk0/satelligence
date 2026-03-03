@@ -1,9 +1,11 @@
 www.trandor.com {
     # Web app
     reverse_proxy web:80
+}
 
-    # API routes proxied through Rails
-    # No need to expose API directly - Rails handles /api/* routes
+# API subdomain - direct to Go backend
+api.trandor.com {
+    reverse_proxy api:8080
 }
 
 # Redirect non-www to www

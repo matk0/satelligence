@@ -7,7 +7,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(nwcHandler *NWCHandler, modelFeed ModelLister) http.Handler {
+func NewRouter(nwcHandler *NWCHandler, walletHandler *WalletHandler, modelFeed ModelLister) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -56,6 +56,13 @@ func NewRouter(nwcHandler *NWCHandler, modelFeed ModelLister) http.Handler {
 	// NWC chat completions - the primary API for AI agents
 	r.Post("/v1/chat/completions", nwcHandler.ChatCompletions)
 	r.Post("/v1/chat/completions/stream", nwcHandler.ChatCompletionsStream)
+
+	// Hosted wallet management (optional - requires LNbits)
+	if walletHandler != nil {
+		r.Post("/v1/wallet/create", walletHandler.CreateWallet)
+		r.Get("/v1/wallet/{wallet_id}", walletHandler.GetWallet)
+		r.Post("/v1/wallet/{wallet_id}/deposit", walletHandler.CreateDeposit)
+	}
 
 	return r
 }

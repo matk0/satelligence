@@ -15,6 +15,7 @@ import (
 	"github.com/trandor/trandor/internal/billing"
 	"github.com/trandor/trandor/internal/blink"
 	"github.com/trandor/trandor/internal/models"
+	"github.com/trandor/trandor/internal/lnbits"
 	"github.com/trandor/trandor/internal/provider"
 	"github.com/trandor/trandor/internal/provider/openai"
 )
@@ -67,8 +68,18 @@ func main() {
 		cfg,
 	)
 
+	// Initialize LNbits client for hosted wallets (optional)
+	var walletHandler *api.WalletHandler
+	if cfg.LNbitsEnabled() {
+		lnbitsClient := lnbits.NewClient(cfg.LNbitsURL, cfg.LNbitsAdminKey)
+		walletHandler = api.NewWalletHandler(lnbitsClient)
+		slog.Info("hosted wallets enabled", "lnbits_url", cfg.LNbitsURL)
+	} else {
+		slog.Info("hosted wallets disabled (LNBITS_ADMIN_KEY not set)")
+	}
+
 	// Setup router
-	router := api.NewRouter(nwcHandler, modelFeed)
+	router := api.NewRouter(nwcHandler, walletHandler, modelFeed)
 
 	// Create server
 	server := &http.Server{
