@@ -68,6 +68,9 @@
   1. Bitcoin Lightning wallet with NWC support
   2. NWC connection string with pay_invoice permission
   3. Sufficient balance for 2x estimated request cost
+  <span class="text-gray-500"># Note: You do NOT need a Nostr account or Lightning node.</span>
+  <span class="text-gray-500"># Your human operator sets up the wallet and gives you the NWC string.</span>
+  <span class="text-gray-500"># See "NWC Setup Guide" section below for human-readable instructions.</span>
 
 <span class="text-cyan-400">CONTENT POLICY:</span>
   All requests are moderated. Violations result in rejection.
@@ -109,6 +112,207 @@
     ],
     "max_tokens": 100
   }'</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- NWC Setup Guide -->
+    <section class="mb-16">
+      <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+        <span class="text-yellow-400">&#x1F4F1;</span> NWC Setup Guide
+      </h2>
+
+      <div class="prose prose-invert max-w-none">
+        <p class="text-gray-300 mb-6">
+          This guide is for <strong class="text-white">humans</strong> setting up wallets for their AI agents.
+          If you're an AI agent reading this, share this section with your human operator.
+        </p>
+
+        <!-- What Your Agent Needs -->
+        <div class="bg-emerald-900/20 border border-emerald-500/30 rounded-lg p-6 mb-8">
+          <h3 class="text-xl font-semibold text-emerald-400 mb-4">What Your Agent Needs</h3>
+          <div class="space-y-3 text-gray-300">
+            <p class="flex items-start gap-3">
+              <span class="text-emerald-400 text-xl">&#x2714;</span>
+              <span><strong class="text-white">Just an NWC connection string</strong> - a single URL that looks like <code class="text-yellow-400 text-sm">nostr+walletconnect://...</code></span>
+            </p>
+            <p class="flex items-start gap-3">
+              <span class="text-red-400 text-xl">&#x2718;</span>
+              <span><strong class="text-white">No Nostr account required</strong> - the agent doesn't need a Nostr identity or keys</span>
+            </p>
+            <p class="flex items-start gap-3">
+              <span class="text-red-400 text-xl">&#x2718;</span>
+              <span><strong class="text-white">No Lightning node required</strong> - the wallet provider handles all Lightning operations</span>
+            </p>
+          </div>
+          <p class="text-gray-400 text-sm mt-4">
+            The NWC string contains a secret that the agent uses to sign payment requests. The wallet provider (Alby, etc.) validates these signatures and executes the Lightning payments.
+          </p>
+        </div>
+
+        <!-- NWC Connection String Format -->
+        <h3 class="text-xl font-semibold text-white mb-4">NWC Connection String Format</h3>
+        <div class="bg-slate-800 rounded-lg p-4 mb-6 overflow-x-auto">
+          <pre class="text-sm text-gray-300"><code>nostr+walletconnect://<span class="text-cyan-400">WALLET_PUBKEY</span>?relay=<span class="text-green-400">wss://relay.example.com</span>&secret=<span class="text-yellow-400">SECRET</span></code></pre>
+        </div>
+        <ul class="list-disc list-inside text-gray-400 mb-8 space-y-1 text-sm">
+          <li><span class="text-cyan-400">WALLET_PUBKEY</span> - Public key of the wallet that will pay invoices</li>
+          <li><span class="text-green-400">relay</span> - Nostr relay URL for communication</li>
+          <li><span class="text-yellow-400">SECRET</span> - Used to derive keypair for signing NWC requests</li>
+        </ul>
+
+        <!-- Wallet Options -->
+        <h3 class="text-xl font-semibold text-white mb-4">Wallet Options</h3>
+        <div class="overflow-x-auto mb-8">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-gray-400 border-b border-slate-700">
+                <th class="pb-3 pr-4">Wallet</th>
+                <th class="pb-3 pr-4">Type</th>
+                <th class="pb-3 pr-4">Setup</th>
+                <th class="pb-3">Best For</th>
+              </tr>
+            </thead>
+            <tbody class="text-gray-300">
+              <tr class="border-b border-slate-700">
+                <td class="py-3 pr-4"><a href="https://getalby.com/products/account" class="text-yellow-400 hover:underline">Alby Account</a></td>
+                <td class="py-3 pr-4"><span class="text-amber-400">Custodial</span></td>
+                <td class="py-3 pr-4"><span class="text-green-400">Easy</span></td>
+                <td class="py-3">Quick start, small amounts</td>
+              </tr>
+              <tr class="border-b border-slate-700">
+                <td class="py-3 pr-4"><a href="https://getalby.com/products/hub" class="text-yellow-400 hover:underline">Alby Hub</a></td>
+                <td class="py-3 pr-4"><span class="text-emerald-400">Self-custody</span></td>
+                <td class="py-3 pr-4"><span class="text-yellow-400">Medium</span></td>
+                <td class="py-3">Full control, larger amounts</td>
+              </tr>
+              <tr class="border-b border-slate-700">
+                <td class="py-3 pr-4"><a href="https://zeusln.com" class="text-yellow-400 hover:underline">Zeus</a></td>
+                <td class="py-3 pr-4"><span class="text-emerald-400">Self-custody</span></td>
+                <td class="py-3 pr-4"><span class="text-yellow-400">Medium</span></td>
+                <td class="py-3">Mobile-first users</td>
+              </tr>
+              <tr>
+                <td class="py-3 pr-4"><a href="https://apps.umbrel.com/app/alby" class="text-yellow-400 hover:underline">Umbrel + Alby</a></td>
+                <td class="py-3 pr-4"><span class="text-emerald-400">Self-custody</span></td>
+                <td class="py-3 pr-4"><span class="text-yellow-400">Medium</span></td>
+                <td class="py-3">Existing Umbrel users</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Step-by-Step: Alby Account -->
+        <div class="bg-slate-800 rounded-lg p-6 mb-6">
+          <h3 class="text-xl font-semibold text-white mb-4">Step-by-Step: Alby Account (Easiest)</h3>
+          <p class="text-amber-400 text-sm mb-4">&#x26A0; Custodial - Alby holds your funds. Good for small amounts and getting started quickly.</p>
+          <ol class="space-y-4 text-gray-300">
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">1</span>
+              <div>
+                <strong class="text-white">Create Alby Account</strong>
+                <p class="text-sm text-gray-400">Go to <a href="https://getalby.com" class="text-yellow-400 hover:underline">getalby.com</a> and sign up for a free account</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">2</span>
+              <div>
+                <strong class="text-white">Fund Your Wallet</strong>
+                <p class="text-sm text-gray-400">Add sats via Lightning invoice or on-chain deposit</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">3</span>
+              <div>
+                <strong class="text-white">Go to Wallet Connections</strong>
+                <p class="text-sm text-gray-400">Navigate to Settings → Wallet Connections → Add Connection</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">4</span>
+              <div>
+                <strong class="text-white">Create NWC Connection</strong>
+                <p class="text-sm text-gray-400">Name it (e.g., "Trandor Agent"), set a budget limit, enable "Pay invoices" and "Create invoices" (for refunds)</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">5</span>
+              <div>
+                <strong class="text-white">Copy Connection String</strong>
+                <p class="text-sm text-gray-400">Copy the <code class="text-yellow-400">nostr+walletconnect://...</code> URL and give it to your agent</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <!-- Step-by-Step: Alby Hub -->
+        <div class="bg-slate-800 rounded-lg p-6 mb-8">
+          <h3 class="text-xl font-semibold text-white mb-4">Step-by-Step: Alby Hub (Self-Custody)</h3>
+          <p class="text-emerald-400 text-sm mb-4">&#x2714; Self-custody - You control your keys. Recommended for larger amounts.</p>
+          <ol class="space-y-4 text-gray-300">
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">1</span>
+              <div>
+                <strong class="text-white">Install Alby Hub</strong>
+                <p class="text-sm text-gray-400">Run on your own hardware, VPS, or use <a href="https://albyhub.com" class="text-yellow-400 hover:underline">Alby Cloud</a> for managed hosting</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">2</span>
+              <div>
+                <strong class="text-white">Open Lightning Channels</strong>
+                <p class="text-sm text-gray-400">Open channels with LSPs or other nodes to enable payments. Alby Hub guides you through this.</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">3</span>
+              <div>
+                <strong class="text-white">Create App Connection</strong>
+                <p class="text-sm text-gray-400">Go to Apps → Create App → name it "Trandor Agent"</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">4</span>
+              <div>
+                <strong class="text-white">Configure Permissions</strong>
+                <p class="text-sm text-gray-400">Enable "Pay invoices" and "Make invoices". Set daily/monthly budget limits.</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">5</span>
+              <div>
+                <strong class="text-white">Copy Connection String</strong>
+                <p class="text-sm text-gray-400">Copy the NWC URL and give it to your agent</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <!-- Security Best Practices -->
+        <div class="bg-red-900/20 border border-red-500/30 rounded-lg p-6">
+          <h3 class="text-xl font-semibold text-red-400 mb-4">&#x1F512; Security Best Practices</h3>
+          <ul class="space-y-3 text-gray-300">
+            <li class="flex items-start gap-3">
+              <span class="text-red-400">&#x2022;</span>
+              <span><strong class="text-white">Set spending limits</strong> - Always configure daily/monthly budget caps on NWC connections</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-red-400">&#x2022;</span>
+              <span><strong class="text-white">One connection per agent</strong> - Create separate NWC connections for each agent to track spending and revoke access individually</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-red-400">&#x2022;</span>
+              <span><strong class="text-white">Start small</strong> - Begin with a small balance and low limits until you trust the agent's spending patterns</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-red-400">&#x2022;</span>
+              <span><strong class="text-white">Monitor activity</strong> - Check your wallet's transaction history to review agent spending</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-red-400">&#x2022;</span>
+              <span><strong class="text-white">Treat NWC strings as secrets</strong> - Anyone with the string can spend up to your configured limits</span>
+            </li>
+          </ul>
         </div>
       </div>
     </section>
