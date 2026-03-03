@@ -269,6 +269,113 @@ func ParseStreamChunk(line string) (*provider.StreamChunk, error) {
 	return &chunk, nil
 }
 
+// Responses calls the OpenAI Responses API (/v1/responses)
+func (p *Provider) Responses(ctx context.Context, req *provider.ResponsesRequest) (*provider.ResponsesResponse, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", OpenAIBaseURL+"/responses", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	slog.Info("openai responses raw response", "status", resp.StatusCode, "body_length", len(respBody))
+	slog.Debug("openai responses body", "body", string(respBody))
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Type    string `json:"type"`
+				Code    string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.Error.Message != "" {
+			return nil, &OpenAIError{
+				StatusCode: resp.StatusCode,
+				Message:    errResp.Error.Message,
+				Type:       errResp.Error.Type,
+				Code:       errResp.Error.Code,
+			}
+		}
+		return nil, fmt.Errorf("openai error: status %d, body: %s", resp.StatusCode, string(respBody))
+	}
+
+	var responsesResp provider.ResponsesResponse
+	if err := json.Unmarshal(respBody, &responsesResp); err != nil {
+		slog.Error("failed to parse responses response", "error", err, "body", string(respBody))
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return &responsesResp, nil
+}
+
+// ResponsesStream creates a streaming Responses API call
+func (p *Provider) ResponsesStream(ctx context.Context, req *provider.ResponsesRequest) (*provider.StreamReader, error) {
+	// Ensure stream is set
+	req.Stream = true
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", OpenAIBaseURL+"/responses", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	// Use a client without timeout for streaming
+	client := &http.Client{}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		respBody, _ := io.ReadAll(resp.Body)
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Type    string `json:"type"`
+				Code    string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.Error.Message != "" {
+			return nil, &OpenAIError{
+				StatusCode: resp.StatusCode,
+				Message:    errResp.Error.Message,
+				Type:       errResp.Error.Type,
+				Code:       errResp.Error.Code,
+			}
+		}
+		return nil, fmt.Errorf("openai error: status %d", resp.StatusCode)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	return provider.NewStreamReader(resp.Body, resp.Body.Close, scanner), nil
+}
+
 // Moderate checks content against OpenAI's moderation API
 func (p *Provider) Moderate(ctx context.Context, input string) (*provider.ModerationResult, error) {
 	reqBody := map[string]string{"input": input}

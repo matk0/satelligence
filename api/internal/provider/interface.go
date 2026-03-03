@@ -113,3 +113,56 @@ type ModerationResult struct {
 type Moderator interface {
 	Moderate(ctx context.Context, input string) (*ModerationResult, error)
 }
+
+// ResponsesRequest represents a request to the Responses API (/v1/responses)
+type ResponsesRequest struct {
+	Model           string                 `json:"model"`
+	Input           interface{}            `json:"input"` // Can be string or array of messages
+	Instructions    string                 `json:"instructions,omitempty"`
+	MaxOutputTokens int                    `json:"max_output_tokens,omitempty"`
+	Temperature     *float64               `json:"temperature,omitempty"`
+	TopP            *float64               `json:"top_p,omitempty"`
+	Tools           []map[string]interface{} `json:"tools,omitempty"`
+	Stream          bool                   `json:"stream,omitempty"`
+	Store           *bool                  `json:"store,omitempty"`
+}
+
+// ResponsesOutputContent represents content in a response output message
+type ResponsesOutputContent struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+}
+
+// ResponsesOutputItem represents an item in the output array
+type ResponsesOutputItem struct {
+	Type    string                   `json:"type"`
+	ID      string                   `json:"id,omitempty"`
+	Status  string                   `json:"status,omitempty"`
+	Role    string                   `json:"role,omitempty"`
+	Content []ResponsesOutputContent `json:"content,omitempty"`
+}
+
+// ResponsesUsage represents token usage in the Responses API
+type ResponsesUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
+}
+
+// ResponsesResponse represents a response from the Responses API
+type ResponsesResponse struct {
+	ID        string                `json:"id"`
+	Object    string                `json:"object"` // "response"
+	CreatedAt int64                 `json:"created_at"`
+	Status    string                `json:"status"`
+	Model     string                `json:"model"`
+	Output    []ResponsesOutputItem `json:"output"`
+	Usage     ResponsesUsage        `json:"usage"`
+}
+
+// ResponsesProvider extends Provider with Responses API support
+type ResponsesProvider interface {
+	Provider
+	Responses(ctx context.Context, req *ResponsesRequest) (*ResponsesResponse, error)
+	ResponsesStream(ctx context.Context, req *ResponsesRequest) (*StreamReader, error)
+}

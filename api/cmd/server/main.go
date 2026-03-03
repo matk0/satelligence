@@ -68,6 +68,15 @@ func main() {
 		cfg,
 	)
 
+	// Initialize Responses API handler
+	responsesHandler := api.NewResponsesHandler(
+		openaiProvider,
+		billingCalc,
+		blinkClient,
+		modelFeed,
+		cfg,
+	)
+
 	// Initialize LNbits client for hosted wallets (optional)
 	var walletHandler *api.WalletHandler
 	if cfg.LNbitsEnabled() {
@@ -79,7 +88,7 @@ func main() {
 	}
 
 	// Setup router
-	router := api.NewRouter(nwcHandler, walletHandler, modelFeed)
+	router := api.NewRouter(nwcHandler, responsesHandler, walletHandler, modelFeed)
 
 	// Create server
 	server := &http.Server{
