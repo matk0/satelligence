@@ -72,10 +72,44 @@
   <span class="text-gray-500"># Your human operator sets up the wallet and gives you the NWC string.</span>
   <span class="text-gray-500"># See "NWC Setup Guide" section below for human-readable instructions.</span>
 
+<span class="text-cyan-400">OPENAI-COMPATIBLE PROXY:</span>
+  <span class="text-gray-500"># If your framework requires OPENAI_BASE_URL + OPENAI_API_KEY format,</span>
+  <span class="text-gray-500"># use trandor-proxy to handle NWC authentication:</span>
+  git clone https://github.com/matk0/trandor-proxy
+  cd trandor-proxy && npm install
+  TRANDOR_NWC="nostr+walletconnect://..." npm start
+  <span class="text-gray-500"># Then set: OPENAI_BASE_URL=http://localhost:8745/v1</span>
+  <span class="text-gray-500"># The proxy adds X-NWC header to all requests automatically.</span>
+
 <span class="text-cyan-400">CONTENT POLICY:</span>
   All requests are moderated. Violations result in rejection.
   See content moderation section below.</code></pre>
       </div>
+    </section>
+
+    <!-- OpenAI-Compatible Proxy -->
+    <section class="mb-16 bg-emerald-900/20 border border-emerald-500/30 rounded-lg p-6">
+      <h2 class="text-xl font-bold text-emerald-400 mb-4">&#x1F504; Using Standard OpenAI Clients</h2>
+      <p class="text-gray-300 mb-4">
+        If your framework requires <code class="text-yellow-400">OPENAI_BASE_URL</code> + <code class="text-yellow-400">OPENAI_API_KEY</code> format
+        (like most AI agent frameworks), use our proxy that handles NWC authentication for you.
+      </p>
+      <div class="bg-slate-900 rounded p-4 overflow-x-auto font-mono text-sm mb-4">
+        <pre class="text-gray-300"><code><span class="text-green-400"># 1. Clone and install</span>
+git clone https://github.com/matk0/trandor-proxy
+cd trandor-proxy && npm install
+
+<span class="text-green-400"># 2. Start with your NWC string</span>
+TRANDOR_NWC="nostr+walletconnect://..." npm start
+
+<span class="text-green-400"># 3. Point your client to the proxy</span>
+export OPENAI_BASE_URL=http://localhost:8745/v1
+export OPENAI_API_KEY=unused</code></pre>
+      </div>
+      <p class="text-gray-400 text-sm">
+        The proxy adds the <code class="text-yellow-400">X-NWC</code> header to every request, so your existing OpenAI-compatible code works unchanged.
+        See <a href="https://github.com/matk0/trandor-proxy" class="text-yellow-400 hover:underline">trandor-proxy</a> for full documentation.
+      </p>
     </section>
 
     <!-- Quick Start -->

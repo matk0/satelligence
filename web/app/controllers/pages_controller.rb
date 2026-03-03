@@ -102,6 +102,15 @@ class PagesController < ApplicationController
         "no-account-required"
       ],
 
+      integrations: {
+        openai_proxy: {
+          name: "trandor-proxy",
+          description: "OpenAI-compatible proxy that handles NWC authentication. Use when your framework requires OPENAI_BASE_URL + OPENAI_API_KEY format.",
+          repo: "https://github.com/matk0/trandor-proxy",
+          skill_file: "SKILL.md"
+        }
+      },
+
       example_curl: 'curl -X POST "https://api.trandor.com/v1/chat/completions" -H "Content-Type: application/json" -H "X-NWC: nostr+walletconnect://..." -d \'{"model":"gpt-4.1","messages":[{"role":"user","content":"Hello!"}]}\''
     }
 
