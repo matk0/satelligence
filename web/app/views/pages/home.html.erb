@@ -57,11 +57,6 @@
                 placeholder="nostr+walletconnect://..."
                 class="flex-1 min-w-[200px] bg-slate-900 border border-slate-600 rounded px-2 py-1 text-cyan-400 placeholder-slate-600 focus:outline-none focus:border-yellow-500 text-sm"
               ><span>" \</span>
-              <button
-                data-action="click->demo#connectAlby"
-                data-demo-target="albyBtn"
-                class="ml-2 text-xs text-yellow-400 hover:text-yellow-300 underline whitespace-nowrap"
-              >or use Alby extension</button>
             </div>
             <div class="text-gray-400 pl-6 mb-2">
               -d '{
@@ -103,22 +98,9 @@
               </button>
             </div>
 
-            <!-- Timeline / Progress -->
-            <div data-demo-target="timeline" class="hidden border-t border-slate-700 pt-4 mt-4">
-              <div class="space-y-2" data-demo-target="timelineItems">
-                <!-- Timeline items will be inserted here -->
-              </div>
-            </div>
-
-            <!-- Response -->
-            <div data-demo-target="response" class="hidden border-t border-slate-700 pt-4 mt-4">
-              <div class="text-gray-500 text-xs mb-2">Response:</div>
-              <div class="bg-slate-900 rounded p-4 text-green-400 whitespace-pre-wrap" data-demo-target="responseContent">
-              </div>
-              <div class="mt-3 flex flex-wrap gap-4 text-xs">
-                <span class="text-gray-500">Cost: <span class="text-yellow-400" data-demo-target="costDisplay">-</span> sats (<span class="text-yellow-400" data-demo-target="costUsdDisplay">-</span>)</span>
-                <span class="text-gray-500">Refund: <span class="text-green-400" data-demo-target="refundDisplay">-</span> sats</span>
-              </div>
+            <!-- Chat Container -->
+            <div data-demo-target="chatContainer" class="hidden border-t border-slate-700 pt-4 mt-4">
+              <!-- Chat messages will be inserted here -->
             </div>
 
             <!-- Chat Continuation (shown after first response) -->
