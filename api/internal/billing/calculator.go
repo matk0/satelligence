@@ -1,6 +1,8 @@
 package billing
 
 import (
+	"log/slog"
+
 	"github.com/trandor/trandor/internal/blink"
 )
 
@@ -32,8 +34,8 @@ type Cost struct {
 func (c *Calculator) Calculate(usage Usage) (*Cost, error) {
 	price, ok := GetModelPrice(usage.Model)
 	if !ok {
-		// Default to gpt-4o pricing if model not found
-		price = ModelPricing["gpt-4o"]
+		slog.Warn("model not found in pricing, using gpt-5.2", "model", usage.Model)
+		price = ModelPricing["gpt-5.2"]
 	}
 
 	// Calculate base cost in USD
@@ -53,6 +55,16 @@ func (c *Calculator) Calculate(usage Usage) (*Cost, error) {
 		totalSats = 1
 	}
 
+	slog.Debug("calculated cost",
+		"model", usage.Model,
+		"prompt_tokens", usage.PromptTokens,
+		"completion_tokens", usage.CompletionTokens,
+		"input_cost_usd", inputCost,
+		"output_cost_usd", outputCost,
+		"total_usd", totalUSD,
+		"total_sats", totalSats,
+	)
+
 	return &Cost{
 		BaseUSD:   baseUSD,
 		MarkupUSD: markupUSD,
@@ -66,7 +78,8 @@ func (c *Calculator) Calculate(usage Usage) (*Cost, error) {
 func (c *Calculator) EstimateCost(model string, inputText string, maxOutputTokens int) int64 {
 	price, ok := GetModelPrice(model)
 	if !ok {
-		price = ModelPricing["gpt-4o"]
+		slog.Warn("model not found in pricing for estimate, using gpt-5.2", "model", model)
+		price = ModelPricing["gpt-5.2"]
 	}
 
 	// Estimate input tokens: ~4 characters per token (conservative for English)
@@ -85,6 +98,19 @@ func (c *Calculator) EstimateCost(model string, inputText string, maxOutputToken
 		sats = 1
 	}
 
+	slog.Info("estimated cost",
+		"model", model,
+		"input_chars", len(inputText),
+		"estimated_input_tokens", estimatedInputTokens,
+		"max_output_tokens", maxOutputTokens,
+		"input_cost_usd", inputCostUSD,
+		"output_cost_usd", outputCostUSD,
+		"total_usd", totalUSD,
+		"estimated_sats", sats,
+		"price_input_per_m", price.InputPerMillion,
+		"price_output_per_m", price.OutputPerMillion,
+	)
+
 	return sats
 }
 
@@ -93,7 +119,7 @@ func (c *Calculator) EstimateCost(model string, inputText string, maxOutputToken
 func (c *Calculator) EstimateMaxCost(model string, maxTokens int) int64 {
 	price, ok := GetModelPrice(model)
 	if !ok {
-		price = ModelPricing["gpt-4o"]
+		price = ModelPricing["gpt-5.2"]
 	}
 
 	// Estimate: assume max tokens for both input and output (conservative)
@@ -102,4 +128,15 @@ func (c *Calculator) EstimateMaxCost(model string, maxTokens int) int64 {
 	maxCostUSD *= (1 + c.markupPercent/100)
 
 	return c.priceFeed.USDToSats(maxCostUSD)
+}
+
+// TestUSDToSats exposes the price feed conversion for debugging
+func (c *Calculator) TestUSDToSats(usd float64) int64 {
+	return c.priceFeed.USDToSats(usd)
+}
+
+// GetBTCPrice returns the current BTC price for debugging
+func (c *Calculator) GetBTCPrice() float64 {
+	price, _ := c.priceFeed.GetBTCPrice()
+	return price
 }

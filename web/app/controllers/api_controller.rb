@@ -65,7 +65,36 @@ class ApiController < ApplicationController
     response = post_to_go("/v1/nwc/chat/completions", request.raw_post, {
       "X-NWC" => request.headers["X-NWC"]
     })
-    proxy_response(response, %w[X-Charged-Sats X-Cost-Sats X-Refund-Sats X-Refund-Status])
+    proxy_response(response, %w[X-Charged-Sats X-Cost-Sats X-Cost-USD X-Refund-Sats X-Refund-Status])
+  end
+
+  # POST /api/nwc/chat/stream - SSE streaming endpoint for NWC
+  def nwc_chat_stream
+    uri = URI("#{GO_API_BASE}/v1/nwc/chat/completions/stream")
+
+    response.headers["Content-Type"] = "text/event-stream"
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Connection"] = "keep-alive"
+    response.headers["X-Accel-Buffering"] = "no"
+
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.read_timeout = 300
+
+    req = Net::HTTP::Post.new(uri.path)
+    req["Content-Type"] = "application/json"
+    req["X-NWC"] = request.headers["X-NWC"]
+    req.body = request.raw_post
+
+    http.request(req) do |upstream_response|
+      upstream_response.read_body do |chunk|
+        response.stream.write(chunk)
+      end
+    end
+  rescue StandardError => e
+    Rails.logger.error("NWC stream error: #{e.message}")
+    response.stream.write("event: error\ndata: {\"error\": \"#{e.message}\"}\n\n")
+  ensure
+    response.stream.close
   end
 
   # GET /api/models

@@ -24,7 +24,7 @@ func NewRouter(handler *Handler, nwcHandler *NWCHandler, weblnHandler *WebLNHand
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-NWC, X-Payment-Hash")
-			w.Header().Set("Access-Control-Expose-Headers", "X-Charged-Sats, X-Cost-Sats, X-Refund-Sats, X-Refund-Status")
+			w.Header().Set("Access-Control-Expose-Headers", "X-Charged-Sats, X-Cost-Sats, X-Cost-USD, X-Refund-Sats, X-Refund-Status")
 
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)
@@ -38,12 +38,16 @@ func NewRouter(handler *Handler, nwcHandler *NWCHandler, weblnHandler *WebLNHand
 	// Health check (no auth required)
 	r.Get("/health", handler.Health)
 
+	// Debug endpoint
+	r.Get("/debug", handler.Debug)
+
 	// List models (no auth required)
 	r.Get("/v1/models", handler.ListModels)
 
-	// NWC pay-per-request endpoint (seamless)
+	// NWC pay-per-request endpoints (seamless)
 	// Use X-NWC header with your Nostr Wallet Connect URL
 	r.Post("/v1/nwc/chat/completions", nwcHandler.ChatCompletions)
+	r.Post("/v1/nwc/chat/completions/stream", nwcHandler.ChatCompletionsStream)
 
 	// WebLN endpoints (browser-based payments)
 	r.Post("/v1/webln/quote", weblnHandler.CreateQuote)

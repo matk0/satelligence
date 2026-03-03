@@ -3,8 +3,8 @@
   <nav class="border-b border-white/10">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
       <div class="flex items-center justify-between">
-        <%= link_to root_path, class: "text-2xl font-bold text-yellow-400" do %>
-          &#x26A1; Trandor
+        <%= link_to root_path, class: "text-2xl font-bold" do %>
+          <span class="bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-400 bg-clip-text text-transparent">&#x26A1; Trandor</span>
         <% end %>
         <%= link_to "Documentation", docs_path, class: "text-gray-300 hover:text-yellow-400 transition-colors" %>
       </div>
@@ -113,11 +113,31 @@
             <!-- Response -->
             <div data-demo-target="response" class="hidden border-t border-slate-700 pt-4 mt-4">
               <div class="text-gray-500 text-xs mb-2">Response:</div>
-              <div class="bg-slate-900 rounded p-4 text-green-400" data-demo-target="responseContent">
+              <div class="bg-slate-900 rounded p-4 text-green-400 whitespace-pre-wrap" data-demo-target="responseContent">
               </div>
-              <div class="mt-3 flex gap-4 text-xs">
-                <span class="text-gray-500">Cost: <span class="text-yellow-400" data-demo-target="costDisplay">-</span> sats</span>
+              <div class="mt-3 flex flex-wrap gap-4 text-xs">
+                <span class="text-gray-500">Cost: <span class="text-yellow-400" data-demo-target="costDisplay">-</span> sats (<span class="text-yellow-400" data-demo-target="costUsdDisplay">-</span>)</span>
                 <span class="text-gray-500">Refund: <span class="text-green-400" data-demo-target="refundDisplay">-</span> sats</span>
+              </div>
+            </div>
+
+            <!-- Chat Continuation (shown after first response) -->
+            <div data-demo-target="chatContinuation" class="hidden border-t border-slate-700 pt-4 mt-4">
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  data-demo-target="continuationInput"
+                  data-action="keydown.enter->demo#sendContinuation"
+                  placeholder="Continue the conversation..."
+                  class="flex-1 bg-slate-900 border border-slate-600 rounded px-3 py-2 text-cyan-400 placeholder-slate-600 focus:outline-none focus:border-yellow-500 text-sm"
+                >
+                <button
+                  data-action="click->demo#sendContinuation"
+                  data-demo-target="continuationBtn"
+                  class="bg-yellow-500 hover:bg-yellow-400 text-black font-bold px-4 py-2 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  Send
+                </button>
               </div>
             </div>
           </div>

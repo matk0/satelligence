@@ -51,6 +51,21 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+func (h *Handler) Debug(w http.ResponseWriter, r *http.Request) {
+	// Test price conversion
+	testUSD := 0.014191
+	sats := h.billing.TestUSDToSats(testUSD)
+	btcPrice := h.billing.GetBTCPrice()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"btc_price_usd": btcPrice,
+		"test_usd":      testUSD,
+		"test_sats":     sats,
+		"expected_sats": testUSD / btcPrice * 100_000_000,
+	})
+}
+
 func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

@@ -8,7 +8,7 @@ dev:
 	@make -j2 dev-api dev-web
 
 dev-api:
-	cd api && go run ./cmd/server
+	set -a && source .env && set +a && cd api && go run ./cmd/server
 
 dev-web:
 	cd web && bin/dev
@@ -50,6 +50,7 @@ test-web:
 	cd web && rails test
 
 test: test-api test-web
+
 
 # Build for production
 build-api:

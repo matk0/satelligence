@@ -10,6 +10,7 @@ Rails.application.routes.draw do
     post "webln/chat/stream", to: "api#webln_chat_stream"
     post "webln/refund", to: "api#webln_refund"
     post "nwc/chat", to: "api#nwc_chat"
+    post "nwc/chat/stream", to: "api#nwc_chat_stream"
     get "models", to: "api#models"
   end
 

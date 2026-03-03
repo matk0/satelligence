@@ -40,7 +40,7 @@ func Load() *Config {
 		MinDepositSats: getEnvInt64("MIN_DEPOSIT_SATS", 5000),
 		RateLimitRPM:   getEnvInt("RATE_LIMIT_RPM", 60),
 		MaxStrikes:     getEnvInt("MAX_STRIKES", 3),
-		Port:           getEnv("PORT", "8080"),
+		Port:           getEnv("API_PORT", "8080"),
 	}
 }
 

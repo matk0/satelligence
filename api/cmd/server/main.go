@@ -39,6 +39,7 @@ func main() {
 		os.Exit(1)
 	}
 
+
 	// Connect to database
 	database, err := db.Connect(context.Background(), cfg.DatabaseURL)
 	if err != nil {

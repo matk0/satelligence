@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -19,11 +20,7 @@ const (
 )
 
 var supportedModels = map[string]bool{
-	"gpt-4o":        true,
-	"gpt-4o-mini":   true,
-	"gpt-4-turbo":   true,
-	"gpt-4":         true,
-	"gpt-3.5-turbo": true,
+	"gpt-5.2": true,
 }
 
 type Provider struct {
@@ -40,12 +37,34 @@ func NewProvider(apiKey string) *Provider {
 	}
 }
 
+// GPT5Request is the request format for GPT-5.x models which use max_completion_tokens
+type GPT5Request struct {
+	Model               string                   `json:"model"`
+	Messages            []provider.ChatMessage   `json:"messages"`
+	MaxCompletionTokens int                      `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64                 `json:"temperature,omitempty"`
+	TopP                *float64                 `json:"top_p,omitempty"`
+	N                   int                      `json:"n,omitempty"`
+	Stop                []string                 `json:"stop,omitempty"`
+}
+
 func (p *Provider) Chat(ctx context.Context, req *provider.ChatRequest) (*provider.ChatResponse, error) {
 	if !p.SupportsModel(req.Model) {
 		return nil, provider.ErrModelNotSupported
 	}
 
-	body, err := json.Marshal(req)
+	// GPT-5.2 uses max_completion_tokens instead of max_tokens
+	gpt5Req := GPT5Request{
+		Model:               req.Model,
+		Messages:            req.Messages,
+		MaxCompletionTokens: req.MaxTokens,
+		Temperature:         req.Temperature,
+		TopP:                req.TopP,
+		N:                   req.N,
+		Stop:                req.Stop,
+	}
+
+	body, err := json.Marshal(gpt5Req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -69,6 +88,10 @@ func (p *Provider) Chat(ctx context.Context, req *provider.ChatRequest) (*provid
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
+	// Log raw response for debugging
+	slog.Info("openai raw response", "status", resp.StatusCode, "body_length", len(respBody))
+	slog.Debug("openai response body", "body", string(respBody))
+
 	if resp.StatusCode != http.StatusOK {
 		var errResp struct {
 			Error struct {
@@ -85,13 +108,51 @@ func (p *Provider) Chat(ctx context.Context, req *provider.ChatRequest) (*provid
 				Code:       errResp.Error.Code,
 			}
 		}
-		return nil, fmt.Errorf("openai error: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("openai error: status %d, body: %s", resp.StatusCode, string(respBody))
 	}
 
-	var chatResp provider.ChatResponse
-	if err := json.Unmarshal(respBody, &chatResp); err != nil {
+	// Parse the response flexibly to handle both string and array content formats
+	var rawResp map[string]interface{}
+	if err := json.Unmarshal(respBody, &rawResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
+
+	// Try to extract content from the response
+	var chatResp provider.ChatResponse
+	if err := json.Unmarshal(respBody, &chatResp); err != nil {
+		slog.Error("failed to parse response", "error", err, "body", string(respBody))
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Check if content is an array (new GPT-5.x format) and convert it
+	if len(chatResp.Choices) > 0 && chatResp.Choices[0].Message.Content == "" {
+		// Try to parse content as array of content parts
+		if choices, ok := rawResp["choices"].([]interface{}); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]interface{}); ok {
+				if message, ok := choice["message"].(map[string]interface{}); ok {
+					if contentArray, ok := message["content"].([]interface{}); ok {
+						// Content is an array, extract text from parts
+						var textParts []string
+						for _, part := range contentArray {
+							if partMap, ok := part.(map[string]interface{}); ok {
+								if partType, ok := partMap["type"].(string); ok && partType == "text" {
+									if text, ok := partMap["text"].(string); ok {
+										textParts = append(textParts, text)
+									}
+								}
+							}
+						}
+						if len(textParts) > 0 {
+							chatResp.Choices[0].Message.Content = strings.Join(textParts, "\n")
+							slog.Info("extracted content from array format", "content_length", len(chatResp.Choices[0].Message.Content))
+						}
+					}
+				}
+			}
+		}
+	}
+
+	slog.Info("parsed response", "choices", len(chatResp.Choices), "content_length", len(chatResp.Choices[0].Message.Content))
 
 	return &chatResp, nil
 }
@@ -111,22 +172,37 @@ func (e *OpenAIError) Error() string {
 	return fmt.Sprintf("openai error: %s (type: %s, code: %s)", e.Message, e.Type, e.Code)
 }
 
+// GPT5StreamRequest is the streaming request format for GPT-5.x
+type GPT5StreamRequest struct {
+	Model               string                   `json:"model"`
+	Messages            []provider.ChatMessage   `json:"messages"`
+	MaxCompletionTokens int                      `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64                 `json:"temperature,omitempty"`
+	TopP                *float64                 `json:"top_p,omitempty"`
+	N                   int                      `json:"n,omitempty"`
+	Stop                []string                 `json:"stop,omitempty"`
+	Stream              bool                     `json:"stream"`
+	StreamOptions       *struct {
+		IncludeUsage bool `json:"include_usage"`
+	} `json:"stream_options,omitempty"`
+}
+
 // ChatStream creates a streaming chat completion
 func (p *Provider) ChatStream(ctx context.Context, req *provider.ChatRequest) (*provider.StreamReader, error) {
 	if !p.SupportsModel(req.Model) {
 		return nil, provider.ErrModelNotSupported
 	}
 
-	// Create streaming request
-	streamReq := struct {
-		*provider.ChatRequest
-		Stream         bool `json:"stream"`
-		StreamOptions  *struct {
-			IncludeUsage bool `json:"include_usage"`
-		} `json:"stream_options,omitempty"`
-	}{
-		ChatRequest: req,
-		Stream:      true,
+	// GPT-5.2 uses max_completion_tokens
+	streamReq := GPT5StreamRequest{
+		Model:               req.Model,
+		Messages:            req.Messages,
+		MaxCompletionTokens: req.MaxTokens,
+		Temperature:         req.Temperature,
+		TopP:                req.TopP,
+		N:                   req.N,
+		Stop:                req.Stop,
+		Stream:              true,
 		StreamOptions: &struct {
 			IncludeUsage bool `json:"include_usage"`
 		}{IncludeUsage: true},
