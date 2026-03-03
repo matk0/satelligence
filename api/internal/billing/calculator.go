@@ -140,3 +140,8 @@ func (c *Calculator) GetBTCPrice() float64 {
 	price, _ := c.priceFeed.GetBTCPrice()
 	return price
 }
+
+// GetMarkupPercent returns the configured markup percentage
+func (c *Calculator) GetMarkupPercent() float64 {
+	return c.markupPercent
+}

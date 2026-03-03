@@ -12,6 +12,7 @@ Rails.application.routes.draw do
     post "nwc/chat", to: "api#nwc_chat"
     post "nwc/chat/stream", to: "api#nwc_chat_stream"
     get "models", to: "api#models"
+    get "debug", to: "api#debug"
   end
 
   # Health check for Docker/load balancer

@@ -52,17 +52,35 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Debug(w http.ResponseWriter, r *http.Request) {
-	// Test price conversion
-	testUSD := 0.014191
-	sats := h.billing.TestUSDToSats(testUSD)
 	btcPrice := h.billing.GetBTCPrice()
+	markupPercent := h.billing.GetMarkupPercent()
+
+	// Calculate example cost with markup
+	exampleUsage := billing.Usage{
+		PromptTokens:     100,
+		CompletionTokens: 500,
+		Model:            "gpt-5.2",
+	}
+	exampleCost, _ := h.billing.Calculate(exampleUsage)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"btc_price_usd": btcPrice,
-		"test_usd":      testUSD,
-		"test_sats":     sats,
-		"expected_sats": testUSD / btcPrice * 100_000_000,
+		"btc_price_usd":   btcPrice,
+		"markup_percent":  markupPercent,
+		"pricing": map[string]interface{}{
+			"gpt-5.2": map[string]float64{
+				"input_per_million":  1.75,
+				"output_per_million": 14.00,
+			},
+		},
+		"example_calculation": map[string]interface{}{
+			"prompt_tokens":     100,
+			"completion_tokens": 500,
+			"base_usd":          exampleCost.BaseUSD,
+			"markup_usd":        exampleCost.MarkupUSD,
+			"total_usd":         exampleCost.TotalUSD,
+			"total_sats":        exampleCost.TotalSats,
+		},
 	})
 }
 

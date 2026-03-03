@@ -103,6 +103,12 @@ class ApiController < ApplicationController
     proxy_response(response)
   end
 
+  # GET /api/debug
+  def debug
+    response = get_from_go("/debug")
+    proxy_response(response)
+  end
+
   private
 
   def post_to_go(path, body, extra_headers = {})
