@@ -4,15 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Trandor is a Bitcoin-native AI API gateway monorepo. It exposes an OpenAI-compatible API and charges users in satoshis via Lightning Network using L402 protocol for anonymous, seamless authentication.
+Trandor is a Bitcoin-native AI API gateway for autonomous AI agents. It exposes an OpenAI-compatible API and accepts payment via Lightning Network using NWC (Nostr Wallet Connect). No accounts, no API keys - payment serves as authentication.
+
+**Target audience**: AI agents with Bitcoin wallets that need to consume AI services.
 
 ## Repository Structure
 
 ```
 trandor/
-├── api/          # Go backend (port 8080) - HTTP API, billing, L402 auth
+├── api/          # Go backend (port 8080) - HTTP API, billing, NWC payments
 ├── web/          # Rails 8 frontend (port 3000) - UI, proxies to API
-└── docs/plans/   # Design documentation
+└── docs/         # Documentation
 ```
 
 ## Common Commands
@@ -40,16 +42,6 @@ make lint         # golangci-lint run
 make fmt          # go fmt ./...
 ```
 
-### Database Migrations
-```bash
-# Go API migrations (from api/)
-make migrate-up   # migrate -path internal/db/migrations -database "$DATABASE_URL" up
-make migrate-down
-
-# Rails migrations (from web/)
-rails db:migrate
-```
-
 ### Docker
 ```bash
 make build        # docker compose build
@@ -60,42 +52,40 @@ make logs         # docker compose logs -f
 
 ## Architecture
 
-### Payment Methods (3 models)
-1. **L402**: Prepaid balance with macaroon-based auth
-2. **NWC**: Nostr Wallet Connect auto-payments (estimates 2x, refunds difference)
-3. **WebLN**: Browser-based payments via Alby extension
+### Payment Method: NWC (Nostr Wallet Connect)
+- Agent provides NWC connection string in X-NWC header
+- Server estimates cost, charges 2x via NWC
+- Server calls AI provider, calculates actual cost
+- Server refunds difference back to agent's wallet
 
 ### Go API Structure (api/internal/)
-- `api/` - HTTP handlers and chi router (`routes.go` for all endpoints)
+- `api/` - HTTP handlers and chi router
 - `billing/` - Cost calculation, pricing per model, USD→sats conversion
-- `blink/` - Lightning invoices, BTC/USD price feed via GraphQL
-- `l402/` - Macaroon-based stateless authentication
+- `blink/` - Lightning invoices, BTC/USD price feed via CoinGecko
 - `nwc/` - Nostr Wallet Connect client
-- `provider/` - AI provider interface (currently OpenAI)
-- `session/` - PostgreSQL session store, balance tracking, strike system
-- `db/` - Database connection, migrations
+- `provider/` - AI provider interface (OpenAI)
+- `models/` - Model feed and validation
 
 ### Rails Frontend Structure (web/app/)
 - `controllers/api_controller.rb` - Proxies to Go backend
-- `javascript/controllers/` - Stimulus.js (chat_controller.js, demo_controller.js)
+- `javascript/controllers/demo_controller.js` - Interactive demo
+- `views/pages/` - Homepage and documentation
 
 ### Key API Routes
-- `POST /v1/chat/completions` - L402-authenticated chat
-- `POST /v1/nwc/chat/completions` - NWC auto-payment chat
-- `POST /v1/webln/quote` → `POST /v1/webln/chat/completions` - WebLN flow
-- `GET /v1/balance`, `POST /v1/invoices`, `GET /v1/usage` - Session management
+- `GET /v1/models` - List available models (no auth)
+- `POST /v1/chat/completions` - Chat completion with NWC payment
+- `POST /v1/chat/completions/stream` - Streaming chat with NWC payment
 
 ## Environment Setup
 
-Copy `.env.example` to `.env` and configure:
-- `DATABASE_URL` - PostgreSQL connection
-- `BLINK_API_KEY` - Lightning invoices
+Required environment variables:
+- `BLINK_API_KEY` - For Lightning invoices
 - `OPENAI_API_KEY` - AI provider
-- `MACAROON_SECRET` - Generate with `openssl rand -hex 32`
-- `SECRET_KEY_BASE` - Rails secret (generate with `rails secret`)
+- `MARKUP_PERCENT` - Our markup (default 5%)
+- `API_PORT` - Server port (default 8080)
 
 ## Tech Stack
 
-**API**: Go 1.24, chi router, pgx, go-nostr, macaroon.v2
-**Web**: Rails 8.0, Stimulus.js, Tailwind CSS, Hotwire
-**Infrastructure**: Docker, Caddy (production), PostgreSQL 16
+**API**: Go 1.24, chi router, go-nostr
+**Web**: Rails 8.0, Stimulus.js, Tailwind CSS
+**Infrastructure**: Docker, Caddy (production)

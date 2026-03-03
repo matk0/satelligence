@@ -14,12 +14,9 @@ import (
 	"github.com/trandor/trandor/internal/api"
 	"github.com/trandor/trandor/internal/billing"
 	"github.com/trandor/trandor/internal/blink"
-	"github.com/trandor/trandor/internal/db"
-	"github.com/trandor/trandor/internal/l402"
 	"github.com/trandor/trandor/internal/models"
 	"github.com/trandor/trandor/internal/provider"
 	"github.com/trandor/trandor/internal/provider/openai"
-	"github.com/trandor/trandor/internal/session"
 )
 
 func main() {
@@ -39,45 +36,19 @@ func main() {
 		os.Exit(1)
 	}
 
-
-	// Connect to database
-	database, err := db.Connect(context.Background(), cfg.DatabaseURL)
-	if err != nil {
-		slog.Error("failed to connect to database", "error", err)
-		os.Exit(1)
-	}
-	defer database.Close()
-
-	// Run migrations
-	if err := database.Migrate(context.Background()); err != nil {
-		slog.Error("failed to run migrations", "error", err)
-		os.Exit(1)
-	}
-
-	// Initialize Blink client
+	// Initialize Blink client (Lightning payments)
 	blinkClient := blink.NewClient(cfg.BlinkAPIKey)
 
-	// Initialize price feed
+	// Initialize price feed (BTC/USD)
 	priceFeed := blink.NewPriceFeed(blinkClient)
 	go priceFeed.Start(context.Background())
-
-	// Initialize session store
-	sessionStore := session.NewStore(database)
-
-	// Initialize L402 service
-	l402Service, err := l402.NewService(cfg.MacaroonSecret, blinkClient, sessionStore, cfg.MinDepositSats)
-	if err != nil {
-		slog.Error("failed to initialize L402 service", "error", err)
-		os.Exit(1)
-	}
 
 	// Initialize billing calculator
 	billingCalc := billing.NewCalculator(priceFeed, cfg.MarkupPercent)
 
-	// Initialize provider router
+	// Initialize AI provider
 	openaiProvider := openai.NewProvider(cfg.OpenAIAPIKey)
 	providerRouter := provider.NewRouter()
-	// Register all models from pricing table
 	for model := range billing.ModelPricing {
 		providerRouter.Register(model, openaiProvider)
 	}
@@ -86,39 +57,18 @@ func main() {
 	modelFeed := models.NewModelFeed(cfg.OpenAIAPIKey, billing.ModelPricing)
 	go modelFeed.Start(context.Background())
 
-	// Initialize API handler (L402 legacy)
-	handler := api.NewHandler(
-		l402Service,
-		sessionStore,
-		providerRouter,
-		billingCalc,
-		openaiProvider, // for moderation
-		modelFeed,
-		cfg,
-	)
-
-	// Initialize NWC handler (seamless pay-per-request with immediate refund)
+	// Initialize NWC handler (the only payment method)
 	nwcHandler := api.NewNWCHandler(
 		providerRouter,
 		billingCalc,
 		blinkClient,
-		openaiProvider, // for moderation
-		modelFeed,
-		cfg,
-	)
-
-	// Initialize WebLN handler (browser-based payments)
-	weblnHandler := api.NewWebLNHandler(
-		providerRouter,
-		billingCalc,
-		blinkClient,
-		openaiProvider, // for moderation
+		openaiProvider, // for content moderation
 		modelFeed,
 		cfg,
 	)
 
 	// Setup router
-	router := api.NewRouter(handler, nwcHandler, weblnHandler, l402Service, cfg)
+	router := api.NewRouter(nwcHandler, modelFeed)
 
 	// Create server
 	server := &http.Server{
@@ -129,9 +79,9 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Start server in goroutine
+	// Start server
 	go func() {
-		slog.Info("starting server", "port", cfg.Port)
+		slog.Info("starting Trandor API server", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)
 			os.Exit(1)
@@ -145,7 +95,7 @@ func main() {
 
 	slog.Info("shutting down server...")
 
-	// Graceful shutdown with timeout
+	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

@@ -127,7 +127,7 @@ export default class extends Controller {
     stepsBlock.scrollIntoView({ behavior: "smooth", block: "start" })
 
     try {
-      const response = await fetch("/api/nwc/chat/stream", {
+      const response = await fetch("/api/chat/stream", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

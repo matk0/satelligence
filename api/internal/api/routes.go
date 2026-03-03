@@ -5,11 +5,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/trandor/trandor/config"
-	"github.com/trandor/trandor/internal/l402"
 )
 
-func NewRouter(handler *Handler, nwcHandler *NWCHandler, weblnHandler *WebLNHandler, l402Service *l402.Service, cfg *config.Config) http.Handler {
+func NewRouter(nwcHandler *NWCHandler, modelFeed ModelLister) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -23,7 +21,7 @@ func NewRouter(handler *Handler, nwcHandler *NWCHandler, weblnHandler *WebLNHand
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-NWC, X-Payment-Hash")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-NWC")
 			w.Header().Set("Access-Control-Expose-Headers", "X-Charged-Sats, X-Cost-Sats, X-Cost-USD, X-Refund-Sats, X-Refund-Status")
 
 			if r.Method == "OPTIONS" {
@@ -35,39 +33,34 @@ func NewRouter(handler *Handler, nwcHandler *NWCHandler, weblnHandler *WebLNHand
 		})
 	})
 
-	// Health check (no auth required)
-	r.Get("/health", handler.Health)
-
-	// Debug endpoint
-	r.Get("/debug", handler.Debug)
-
-	// List models (no auth required)
-	r.Get("/v1/models", handler.ListModels)
-
-	// NWC pay-per-request endpoints (seamless)
-	// Use X-NWC header with your Nostr Wallet Connect URL
-	r.Post("/v1/nwc/chat/completions", nwcHandler.ChatCompletions)
-	r.Post("/v1/nwc/chat/completions/stream", nwcHandler.ChatCompletionsStream)
-
-	// WebLN endpoints (browser-based payments)
-	r.Post("/v1/webln/quote", weblnHandler.CreateQuote)
-	r.Post("/v1/webln/chat/completions", weblnHandler.ChatCompletions)
-	r.Post("/v1/webln/chat/completions/stream", weblnHandler.ChatCompletionsStream)
-	r.Post("/v1/webln/refund", weblnHandler.Refund)
-
-	// L402 prepaid balance routes (legacy)
-	r.Group(func(r chi.Router) {
-		r.Use(L402Middleware(l402Service, handler.sessionStore))
-		r.Use(RateLimitMiddleware(cfg))
-
-		// OpenAI-compatible endpoint
-		r.Post("/v1/chat/completions", handler.ChatCompletions)
-
-		// Lightning extensions
-		r.Get("/v1/balance", handler.GetBalance)
-		r.Post("/v1/invoices", handler.CreateInvoice)
-		r.Get("/v1/usage", handler.GetUsage)
+	// Health check
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// List available models (for agent discovery)
+	r.Get("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		models := modelFeed.GetModels()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"models":[`))
+		for i, m := range models {
+			if i > 0 {
+				w.Write([]byte(","))
+			}
+			w.Write([]byte(`"` + m + `"`))
+		}
+		w.Write([]byte(`]}`))
+	})
+
+	// NWC chat completions - the primary API for AI agents
+	r.Post("/v1/chat/completions", nwcHandler.ChatCompletions)
+	r.Post("/v1/chat/completions/stream", nwcHandler.ChatCompletionsStream)
+
 	return r
+}
+
+// ModelLister interface for dependency injection
+type ModelLister interface {
+	GetModels() []string
 }

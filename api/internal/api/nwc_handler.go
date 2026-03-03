@@ -11,7 +11,6 @@ import (
 	"github.com/trandor/trandor/config"
 	"github.com/trandor/trandor/internal/billing"
 	"github.com/trandor/trandor/internal/blink"
-	"github.com/trandor/trandor/internal/l402"
 	"github.com/trandor/trandor/internal/models"
 	"github.com/trandor/trandor/internal/nwc"
 	"github.com/trandor/trandor/internal/provider"
@@ -59,14 +58,14 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// Get NWC connection string from header
 	nwcURL := r.Header.Get("X-NWC")
 	if nwcURL == "" {
-		l402.WriteError(w, http.StatusBadRequest, "missing_nwc", "X-NWC header required with Nostr Wallet Connect URL")
+		writeError(w, http.StatusBadRequest, "missing_nwc", "X-NWC header required with Nostr Wallet Connect URL")
 		return
 	}
 
 	// Parse NWC connection
 	nwcClient, err := nwc.NewClient(nwcURL)
 	if err != nil {
-		l402.WriteError(w, http.StatusBadRequest, "invalid_nwc", "invalid NWC connection URL: "+err.Error())
+		writeError(w, http.StatusBadRequest, "invalid_nwc", "invalid NWC connection URL: "+err.Error())
 		return
 	}
 	defer nwcClient.Close()
@@ -74,13 +73,13 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// Parse request
 	var req provider.ChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		l402.WriteError(w, http.StatusBadRequest, "invalid_request", "failed to parse request body")
+		writeError(w, http.StatusBadRequest, "invalid_request", "failed to parse request body")
 		return
 	}
 
 	// Validate model
 	if !h.modelFeed.IsSupported(req.Model) {
-		l402.WriteError(w, http.StatusBadRequest, "invalid_model", "Model '"+req.Model+"' is not supported. Use /v1/models to see available models.")
+		writeError(w, http.StatusBadRequest, "invalid_model", "Model '"+req.Model+"' is not supported. Use /v1/models to see available models.")
 		return
 	}
 
@@ -100,7 +99,7 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		slog.Error("moderation failed", "error", err)
 		// Continue anyway
 	} else if modResult.Flagged {
-		l402.WriteError(w, http.StatusBadRequest, "content_violation", "content flagged for: "+modResult.Reason)
+		writeError(w, http.StatusBadRequest, "content_violation", "content flagged for: "+modResult.Reason)
 		return
 	}
 
@@ -124,7 +123,7 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	invoice, err := h.blinkClient.CreateInvoice(ctx, chargeAmount, fmt.Sprintf("Trandor: %s request", req.Model))
 	if err != nil {
 		slog.Error("failed to create invoice", "error", err)
-		l402.WriteError(w, http.StatusInternalServerError, "invoice_error", "failed to create payment invoice")
+		writeError(w, http.StatusInternalServerError, "invoice_error", "failed to create payment invoice")
 		return
 	}
 
@@ -134,7 +133,7 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	preimage, err := nwcClient.PayInvoice(ctx, invoice.PaymentRequest, 30*time.Second)
 	if err != nil {
 		slog.Error("NWC payment failed", "error", err)
-		l402.WriteError(w, http.StatusPaymentRequired, "payment_failed", "NWC payment failed: "+err.Error())
+		writeError(w, http.StatusPaymentRequired, "payment_failed", "NWC payment failed: "+err.Error())
 		return
 	}
 
@@ -143,7 +142,7 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// Step 3: Call AI provider
 	prov, err := h.providerRouter.GetProvider(req.Model)
 	if err != nil {
-		l402.WriteError(w, http.StatusBadRequest, "invalid_model", "model not supported")
+		writeError(w, http.StatusBadRequest, "invalid_model", "model not supported")
 		return
 	}
 
@@ -151,12 +150,12 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if openaiErr, ok := err.(*openai.OpenAIError); ok {
 			if openaiErr.StatusCode >= 400 && openaiErr.StatusCode < 500 {
-				l402.WriteError(w, openaiErr.StatusCode, "provider_error", openaiErr.Message)
+				writeError(w, openaiErr.StatusCode, "provider_error", openaiErr.Message)
 				return
 			}
 		}
 		slog.Error("provider error", "error", err)
-		l402.WriteError(w, http.StatusBadGateway, "provider_error", "upstream provider error")
+		writeError(w, http.StatusBadGateway, "provider_error", "upstream provider error")
 		return
 	}
 

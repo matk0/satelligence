@@ -6,7 +6,7 @@
         <%= link_to root_path, class: "text-2xl font-bold" do %>
           <span class="bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-400 bg-clip-text text-transparent">&#x26A1; Trandor</span>
         <% end %>
-        <%= link_to "Documentation", docs_path, class: "text-gray-300 hover:text-yellow-400 transition-colors" %>
+        <%= link_to "API Documentation", docs_path, class: "text-gray-300 hover:text-yellow-400 transition-colors" %>
       </div>
     </div>
   </nav>
@@ -21,16 +21,54 @@
           </span>
         </h1>
         <p class="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto">
-          Bitcoin-native AI. Pay per request with Lightning.
+          AI API Gateway for Autonomous Agents
           <br>
-          <span class="text-yellow-400">No accounts. No subscriptions. Just sats.</span>
+          <span class="text-yellow-400">Pay with Bitcoin. No accounts. No API keys.</span>
         </p>
       </div>
 
-      <!-- Interactive Terminal Demo -->
+      <!-- Machine-readable API summary for AI agents -->
+      <div class="max-w-4xl mx-auto mb-12">
+        <div class="bg-slate-950 rounded-xl border border-slate-700 shadow-2xl overflow-hidden">
+          <div class="bg-slate-800 px-4 py-3 flex items-center gap-2 border-b border-slate-700">
+            <div class="flex gap-2">
+              <div class="w-3 h-3 rounded-full bg-red-500"></div>
+              <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+              <div class="w-3 h-3 rounded-full bg-green-500"></div>
+            </div>
+            <span class="text-gray-400 text-sm ml-4 font-mono">Quick Start for AI Agents</span>
+          </div>
+
+          <div class="p-6 font-mono text-sm">
+            <pre class="text-gray-300 whitespace-pre-wrap"><code><span class="text-green-400"># Trandor API - Pay-per-request AI with Bitcoin</span>
+<span class="text-green-400"># Authentication: NWC (Nostr Wallet Connect) in X-NWC header</span>
+<span class="text-green-400"># Payment: Automatic via your wallet. We charge 2x estimate, refund the difference.</span>
+
+<span class="text-yellow-400">POST</span> https://api.trandor.com/v1/chat/completions
+<span class="text-cyan-400">Headers:</span>
+  Content-Type: application/json
+  X-NWC: nostr+walletconnect://&lt;your-nwc-connection-string&gt;
+
+<span class="text-cyan-400">Body:</span>
+{
+  "model": "gpt-4.1",
+  "messages": [{"role": "user", "content": "Hello"}],
+  "max_tokens": 1000
+}
+
+<span class="text-cyan-400">Response Headers:</span>
+  X-Cost-Sats: &lt;actual cost in satoshis&gt;
+  X-Refund-Sats: &lt;refund amount&gt;
+
+<span class="text-green-400"># Get available models:</span>
+<span class="text-yellow-400">GET</span> https://api.trandor.com/v1/models</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Demo -->
       <div class="max-w-4xl mx-auto" data-controller="demo">
         <div class="bg-slate-950 rounded-xl border border-slate-700 shadow-2xl overflow-hidden">
-          <!-- Terminal Header -->
           <div class="bg-slate-800 px-4 py-3 flex items-center gap-2 border-b border-slate-700">
             <div class="flex gap-2">
               <div class="w-3 h-3 rounded-full bg-red-500"></div>
@@ -40,11 +78,9 @@
             <span class="text-gray-400 text-sm ml-4 font-mono">Try it live</span>
           </div>
 
-          <!-- Terminal Content -->
           <div class="p-6 font-mono text-sm">
-            <!-- Command with inline inputs -->
             <div class="text-gray-400 mb-2">
-              <span class="text-green-400">$</span> curl -X POST "<span class="text-yellow-400">https://api.trandor.com/v1/nwc/chat/completions</span>" \
+              <span class="text-green-400">$</span> curl -X POST "<span class="text-yellow-400">https://api.trandor.com/v1/chat/completions</span>" \
             </div>
             <div class="text-gray-400 pl-6 mb-2">
               -H "Content-Type: application/json" \
@@ -87,7 +123,6 @@
               }'
             </div>
 
-            <!-- Send Button -->
             <div class="border-t border-slate-700 pt-4 mt-2">
               <button
                 data-action="click->demo#send"
@@ -98,12 +133,9 @@
               </button>
             </div>
 
-            <!-- Chat Container -->
             <div data-demo-target="chatContainer" class="hidden border-t border-slate-700 pt-4 mt-4">
-              <!-- Chat messages will be inserted here -->
             </div>
 
-            <!-- Chat Continuation (shown after first response) -->
             <div data-demo-target="chatContinuation" class="hidden border-t border-slate-700 pt-4 mt-4">
               <div class="flex gap-2">
                 <input
@@ -131,50 +163,78 @@
       </div>
     </div>
 
-    <!-- Lightning bolt decoration -->
     <div class="absolute top-20 left-10 text-yellow-500/10 text-9xl pointer-events-none">&#x26A1;</div>
     <div class="absolute bottom-10 right-10 text-yellow-500/10 text-9xl pointer-events-none">&#x26A1;</div>
   </header>
 
-  <!-- How It Works -->
+  <!-- For AI Agents Section -->
   <section class="py-20 bg-black/30">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h2 class="text-3xl md:text-4xl font-bold text-white text-center mb-16">How It Works</h2>
+      <h2 class="text-3xl md:text-4xl font-bold text-white text-center mb-4">Built for AI Agents</h2>
+      <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
+        If you're an AI agent with a Bitcoin wallet, you can use this API to access AI models.
+        No accounts, no API keys - just pay per request with your NWC connection.
+      </p>
 
       <div class="grid md:grid-cols-3 gap-8">
         <div class="bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10">
           <div class="text-4xl mb-4">1</div>
-          <h3 class="text-xl font-bold text-white mb-3">Paste NWC String</h3>
+          <h3 class="text-xl font-bold text-white mb-3">Get NWC Connection</h3>
           <p class="text-gray-400">
-            Get your NWC connection string from Alby or any compatible wallet. It authorizes payments up to a limit you set.
+            Your wallet provides an NWC URL. This authorizes payments up to a limit you control.
           </p>
         </div>
 
         <div class="bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10">
           <div class="text-4xl mb-4">2</div>
-          <h3 class="text-xl font-bold text-white mb-3">Send Request</h3>
+          <h3 class="text-xl font-bold text-white mb-3">Make Request</h3>
           <p class="text-gray-400">
-            We estimate the cost, charge via Lightning, call the AI, and return the response. All in one HTTP request.
+            POST to /v1/chat/completions with your NWC in the X-NWC header. We handle payment automatically.
           </p>
         </div>
 
         <div class="bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10">
           <div class="text-4xl mb-4">3</div>
-          <h3 class="text-xl font-bold text-white mb-3">Get Refund</h3>
+          <h3 class="text-xl font-bold text-white mb-3">Get Response + Refund</h3>
           <p class="text-gray-400">
-            We charge 2x estimated cost upfront, then immediately refund the difference after calculating actual usage.
+            We charge 2x estimated cost, call the AI, then immediately refund the difference.
           </p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- For Developers -->
+  <!-- Content Moderation Notice -->
+  <section class="py-20">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="bg-amber-900/20 border border-amber-500/30 rounded-2xl p-8">
+        <h3 class="text-xl font-bold text-amber-400 mb-4">&#x26A0; Content Moderation Notice</h3>
+        <p class="text-gray-300 mb-4">
+          All requests are checked by OpenAI's moderation API before processing.
+        </p>
+        <p class="text-gray-400 text-sm">
+          <strong>Why?</strong> Trandor uses OpenAI's API to serve AI responses. If we violate OpenAI's terms of service
+          by allowing harmful content, our API access will be revoked and this service will stop working for everyone.
+        </p>
+        <p class="text-gray-400 text-sm mt-2">
+          Requests flagged for violence, hate speech, self-harm, sexual content involving minors, or other policy violations
+          will be rejected. Repeated violations may result in your NWC connection being blocked.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
   <section class="py-20 bg-black/30">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h2 class="text-3xl md:text-4xl font-bold text-white text-center mb-4">OpenAI-Compatible API</h2>
-      <p class="text-gray-400 text-center max-w-2xl mx-auto">
-        Drop-in replacement for OpenAI. Just add your NWC connection string as a header.
+      <h2 class="text-3xl md:text-4xl font-bold text-white text-center mb-4">Transparent Pricing</h2>
+      <p class="text-gray-400 text-center max-w-2xl mx-auto mb-8">
+        Pay OpenAI's rates + 5% markup. No hidden fees. Prices in satoshis based on current BTC/USD rate.
+      </p>
+      <p class="text-center">
+        <span class="inline-block bg-yellow-500/20 text-yellow-400 px-4 py-2 rounded-lg font-mono text-sm">
+          Cost = (OpenAI price) &times; 1.05 &times; (USD/BTC rate)
+        </span>
       </p>
     </div>
   </section>
@@ -182,8 +242,12 @@
   <!-- Footer -->
   <footer class="py-12 border-t border-white/10">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-      <p class="text-gray-500">
+      <p class="text-gray-500 mb-4">
         Built with &#x26A1; Lightning &bull; Powered by Bitcoin
+      </p>
+      <p class="text-gray-600 text-sm">
+        <a href="https://github.com/trandor/trandor" class="hover:text-yellow-400">Open Source</a>
+        &bull; Self-host with 0% markup
       </p>
     </div>
   </footer>

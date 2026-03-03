@@ -5,14 +5,9 @@ Rails.application.routes.draw do
 
   # API proxy to Go backend
   scope "/api" do
-    post "webln/quote", to: "api#webln_quote"
-    post "webln/chat", to: "api#webln_chat"
-    post "webln/chat/stream", to: "api#webln_chat_stream"
-    post "webln/refund", to: "api#webln_refund"
-    post "nwc/chat", to: "api#nwc_chat"
-    post "nwc/chat/stream", to: "api#nwc_chat_stream"
+    post "chat", to: "api#chat"
+    post "chat/stream", to: "api#chat_stream"
     get "models", to: "api#models"
-    get "debug", to: "api#debug"
   end
 
   # Health check for Docker/load balancer
