@@ -18,6 +18,7 @@ import (
 	"github.com/trandor/trandor/internal/lnbits"
 	"github.com/trandor/trandor/internal/provider"
 	"github.com/trandor/trandor/internal/provider/openai"
+	"github.com/trandor/trandor/internal/treasury"
 )
 
 func main() {
@@ -39,6 +40,10 @@ func main() {
 
 	// Initialize Blink client (Lightning payments)
 	blinkClient := blink.NewClient(cfg.BlinkAPIKey)
+
+	// Initialize treasury manager (BTC-to-Stablesats conversion)
+	treasuryMgr := treasury.NewManager(blinkClient, cfg.Treasury)
+	go treasuryMgr.Start(context.Background())
 
 	// Initialize price feed (BTC/USD)
 	priceFeed := blink.NewPriceFeed(blinkClient)
@@ -88,7 +93,7 @@ func main() {
 	}
 
 	// Setup router
-	router := api.NewRouter(nwcHandler, responsesHandler, walletHandler, modelFeed)
+	router := api.NewRouter(nwcHandler, responsesHandler, walletHandler, modelFeed, treasuryMgr)
 
 	// Create server
 	server := &http.Server{
@@ -114,6 +119,9 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down server...")
+
+	// Stop treasury manager
+	treasuryMgr.Stop()
 
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

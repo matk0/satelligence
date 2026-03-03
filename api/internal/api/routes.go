@@ -1,13 +1,15 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/trandor/trandor/internal/treasury"
 )
 
-func NewRouter(nwcHandler *NWCHandler, responsesHandler *ResponsesHandler, walletHandler *WalletHandler, modelFeed ModelLister) http.Handler {
+func NewRouter(nwcHandler *NWCHandler, responsesHandler *ResponsesHandler, walletHandler *WalletHandler, modelFeed ModelLister, treasuryMgr *treasury.Manager) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -36,7 +38,16 @@ func NewRouter(nwcHandler *NWCHandler, responsesHandler *ResponsesHandler, walle
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`))
+
+		response := map[string]interface{}{
+			"status": "ok",
+		}
+
+		if treasuryMgr != nil {
+			response["treasury"] = treasuryMgr.GetStatus()
+		}
+
+		json.NewEncoder(w).Encode(response)
 	})
 
 	// List available models (for agent discovery)

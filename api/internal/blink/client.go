@@ -16,9 +16,10 @@ const (
 )
 
 type Client struct {
-	apiKey     string
-	walletID   string
-	httpClient *http.Client
+	apiKey      string
+	btcWalletID string
+	usdWalletID string
+	httpClient  *http.Client
 }
 
 func NewClient(apiKey string) *Client {
@@ -29,12 +30,12 @@ func NewClient(apiKey string) *Client {
 		},
 	}
 
-	// Fetch wallet ID if API key is provided
+	// Fetch wallet IDs if API key is provided
 	if apiKey != "" {
-		if err := c.fetchWalletID(context.Background()); err != nil {
-			slog.Warn("failed to fetch Blink wallet ID", "error", err)
+		if err := c.fetchWalletIDs(context.Background()); err != nil {
+			slog.Warn("failed to fetch Blink wallet IDs", "error", err)
 		} else {
-			slog.Info("fetched Blink wallet ID", "wallet_id", c.walletID)
+			slog.Info("fetched Blink wallet IDs", "btc_wallet_id", c.btcWalletID, "usd_wallet_id", c.usdWalletID)
 		}
 	}
 
@@ -52,7 +53,7 @@ type walletResponse struct {
 	} `json:"me"`
 }
 
-func (c *Client) fetchWalletID(ctx context.Context) error {
+func (c *Client) fetchWalletIDs(ctx context.Context) error {
 	query := `
 		query Me {
 			me {
@@ -71,19 +72,165 @@ func (c *Client) fetchWalletID(ctx context.Context) error {
 		return err
 	}
 
-	// Find BTC wallet
+	// Find BTC and USD wallets
 	for _, wallet := range result.Me.DefaultAccount.Wallets {
-		if wallet.WalletCurrency == "BTC" {
-			c.walletID = wallet.ID
-			return nil
+		switch wallet.WalletCurrency {
+		case "BTC":
+			c.btcWalletID = wallet.ID
+		case "USD":
+			c.usdWalletID = wallet.ID
 		}
 	}
 
-	return fmt.Errorf("no BTC wallet found")
+	if c.btcWalletID == "" {
+		return fmt.Errorf("no BTC wallet found")
+	}
+
+	return nil
 }
 
 func (c *Client) GetWalletID() string {
-	return c.walletID
+	return c.btcWalletID
+}
+
+func (c *Client) GetBTCWalletID() string {
+	return c.btcWalletID
+}
+
+func (c *Client) GetUSDWalletID() string {
+	return c.usdWalletID
+}
+
+// WalletBalances represents the balances of BTC and USD wallets
+type WalletBalances struct {
+	BTCSats  int64
+	USDCents int64
+}
+
+type walletBalancesResponse struct {
+	Me struct {
+		DefaultAccount struct {
+			Wallets []struct {
+				ID             string `json:"id"`
+				WalletCurrency string `json:"walletCurrency"`
+				Balance        int64  `json:"balance"`
+			} `json:"wallets"`
+		} `json:"defaultAccount"`
+	} `json:"me"`
+}
+
+// GetWalletBalances returns the current balances of BTC and USD wallets
+func (c *Client) GetWalletBalances(ctx context.Context) (*WalletBalances, error) {
+	if c.apiKey == "" {
+		// Development mode
+		return &WalletBalances{
+			BTCSats:  10000,
+			USDCents: 5000,
+		}, nil
+	}
+
+	query := `
+		query Me {
+			me {
+				defaultAccount {
+					wallets {
+						id
+						walletCurrency
+						balance
+					}
+				}
+			}
+		}
+	`
+
+	var result walletBalancesResponse
+	if err := c.execute(ctx, query, nil, &result); err != nil {
+		return nil, err
+	}
+
+	balances := &WalletBalances{}
+	for _, wallet := range result.Me.DefaultAccount.Wallets {
+		switch wallet.WalletCurrency {
+		case "BTC":
+			balances.BTCSats = wallet.Balance
+		case "USD":
+			balances.USDCents = wallet.Balance
+		}
+	}
+
+	return balances, nil
+}
+
+// TransferResult represents the result of an intra-ledger transfer
+type TransferResult struct {
+	Status        string
+	TransactionID string
+}
+
+type intraLedgerPaymentSendResponse struct {
+	IntraLedgerPaymentSend struct {
+		Status string `json:"status"`
+		Errors []struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		} `json:"errors"`
+		Transaction struct {
+			ID string `json:"id"`
+		} `json:"transaction"`
+	} `json:"intraLedgerPaymentSend"`
+}
+
+// TransferBTCToUSD transfers sats from BTC wallet to USD wallet (Stablesats)
+// This is an intra-ledger transfer with ~0.2% spread and no fees
+func (c *Client) TransferBTCToUSD(ctx context.Context, amountSats int64) (*TransferResult, error) {
+	if c.apiKey == "" {
+		// Development mode
+		return &TransferResult{
+			Status:        "SUCCESS",
+			TransactionID: "dev_transfer_id",
+		}, nil
+	}
+
+	if c.usdWalletID == "" {
+		return nil, fmt.Errorf("USD wallet not configured")
+	}
+
+	query := `
+		mutation IntraLedgerPaymentSend($input: IntraLedgerPaymentSendInput!) {
+			intraLedgerPaymentSend(input: $input) {
+				status
+				errors {
+					message
+					code
+				}
+				transaction {
+					id
+				}
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"input": map[string]interface{}{
+			"walletId":          c.btcWalletID,
+			"recipientWalletId": c.usdWalletID,
+			"amount":            amountSats,
+		},
+	}
+
+	var result intraLedgerPaymentSendResponse
+	if err := c.execute(ctx, query, variables, &result); err != nil {
+		return nil, err
+	}
+
+	if len(result.IntraLedgerPaymentSend.Errors) > 0 {
+		return nil, fmt.Errorf("transfer failed: %s", result.IntraLedgerPaymentSend.Errors[0].Message)
+	}
+
+	return &TransferResult{
+		Status:        result.IntraLedgerPaymentSend.Status,
+		TransactionID: result.IntraLedgerPaymentSend.Transaction.ID,
+	}, nil
 }
 
 // PaymentResult represents the result of a Lightning payment
@@ -127,7 +274,7 @@ func (c *Client) PayInvoice(ctx context.Context, paymentRequest string) (*Paymen
 	variables := map[string]interface{}{
 		"input": map[string]interface{}{
 			"paymentRequest": paymentRequest,
-			"walletId":       c.walletID,
+			"walletId":       c.btcWalletID,
 		},
 	}
 

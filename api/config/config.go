@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"time"
 )
 
 type Config struct {
@@ -22,6 +23,18 @@ type Config struct {
 
 	// Server
 	Port string
+
+	// Treasury management
+	Treasury TreasuryConfig
+}
+
+// TreasuryConfig controls automatic BTC-to-Stablesats conversion
+type TreasuryConfig struct {
+	Enabled       bool          // Enable treasury management
+	ThresholdSats int64         // Convert when BTC exceeds this amount
+	MinSats       int64         // Minimum amount to convert
+	Interval      time.Duration // How often to check balances
+	RetainBuffer  int64         // Keep this amount in BTC for refunds
 }
 
 func Load() *Config {
@@ -33,6 +46,13 @@ func Load() *Config {
 		MarkupPercent:  getEnvFloat("MARKUP_PERCENT", 5.0),
 		MaxStrikes:     getEnvInt("MAX_STRIKES", 3),
 		Port:           getEnv("API_PORT", "8080"),
+		Treasury: TreasuryConfig{
+			Enabled:       getEnvBool("TREASURY_ENABLED", false),
+			ThresholdSats: getEnvInt64("TREASURY_THRESHOLD_SATS", 1000),
+			MinSats:       getEnvInt64("TREASURY_MIN_SATS", 500),
+			Interval:      getEnvDuration("TREASURY_INTERVAL", 5*time.Minute),
+			RetainBuffer:  getEnvInt64("TREASURY_RETAIN_BUFFER", 2000),
+		},
 	}
 }
 
@@ -71,6 +91,33 @@ func getEnvFloat(key string, defaultValue float64) float64 {
 	if value := os.Getenv(key); value != "" {
 		if f, err := strconv.ParseFloat(value, 64); err == nil {
 			return f
+		}
+	}
+	return defaultValue
+}
+
+func getEnvInt64(key string, defaultValue int64) int64 {
+	if value := os.Getenv(key); value != "" {
+		if i, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return i
+		}
+	}
+	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		if b, err := strconv.ParseBool(value); err == nil {
+			return b
+		}
+	}
+	return defaultValue
+}
+
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if d, err := time.ParseDuration(value); err == nil {
+			return d
 		}
 	}
 	return defaultValue
