@@ -2,12 +2,69 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 )
+
+// MessageContent can be either a string or an array of content parts
+// This supports both formats per OpenAI spec:
+// - String: "Hello"
+// - Array: [{"type": "text", "text": "Hello"}, {"type": "image_url", ...}]
+type MessageContent struct {
+	raw json.RawMessage
+}
+
+// UnmarshalJSON handles both string and array content formats
+func (c *MessageContent) UnmarshalJSON(data []byte) error {
+	c.raw = data
+	return nil
+}
+
+// MarshalJSON returns the raw content as-is
+func (c MessageContent) MarshalJSON() ([]byte, error) {
+	if c.raw == nil {
+		return []byte(`""`), nil
+	}
+	return c.raw, nil
+}
+
+// String returns the text content, extracting from array if needed
+// This is used for moderation and cost estimation
+func (c *MessageContent) String() string {
+	if c.raw == nil || len(c.raw) == 0 {
+		return ""
+	}
+
+	// Try as string first
+	var str string
+	if err := json.Unmarshal(c.raw, &str); err == nil {
+		return str
+	}
+
+	// Try as array of content parts
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(c.raw, &parts); err == nil {
+		var result string
+		for _, part := range parts {
+			if part.Type == "text" && part.Text != "" {
+				if result != "" {
+					result += "\n"
+				}
+				result += part.Text
+			}
+		}
+		return result
+	}
+
+	return ""
+}
 
 // ChatMessage represents a message in the chat
 type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string         `json:"role"`
+	Content MessageContent `json:"content"`
 }
 
 // ChatRequest represents a chat completion request

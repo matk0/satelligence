@@ -91,7 +91,7 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// Moderate content
 	var inputText string
 	for _, msg := range req.Messages {
-		inputText += msg.Content + " "
+		inputText += msg.Content.String() + " "
 	}
 
 	modResult, err := h.moderator.Moderate(ctx, inputText)
@@ -309,7 +309,7 @@ func (h *NWCHandler) ChatCompletionsStream(w http.ResponseWriter, r *http.Reques
 
 	var inputText string
 	for _, msg := range req.Messages {
-		inputText += msg.Content + " "
+		inputText += msg.Content.String() + " "
 	}
 
 	modResult, err := h.moderator.Moderate(ctx, inputText)

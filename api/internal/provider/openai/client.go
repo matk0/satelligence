@@ -111,48 +111,14 @@ func (p *Provider) Chat(ctx context.Context, req *provider.ChatRequest) (*provid
 		return nil, fmt.Errorf("openai error: status %d, body: %s", resp.StatusCode, string(respBody))
 	}
 
-	// Parse the response flexibly to handle both string and array content formats
-	var rawResp map[string]interface{}
-	if err := json.Unmarshal(respBody, &rawResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	// Try to extract content from the response
+	// Parse response - MessageContent handles both string and array formats automatically
 	var chatResp provider.ChatResponse
 	if err := json.Unmarshal(respBody, &chatResp); err != nil {
 		slog.Error("failed to parse response", "error", err, "body", string(respBody))
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	// Check if content is an array (new GPT-5.x format) and convert it
-	if len(chatResp.Choices) > 0 && chatResp.Choices[0].Message.Content == "" {
-		// Try to parse content as array of content parts
-		if choices, ok := rawResp["choices"].([]interface{}); ok && len(choices) > 0 {
-			if choice, ok := choices[0].(map[string]interface{}); ok {
-				if message, ok := choice["message"].(map[string]interface{}); ok {
-					if contentArray, ok := message["content"].([]interface{}); ok {
-						// Content is an array, extract text from parts
-						var textParts []string
-						for _, part := range contentArray {
-							if partMap, ok := part.(map[string]interface{}); ok {
-								if partType, ok := partMap["type"].(string); ok && partType == "text" {
-									if text, ok := partMap["text"].(string); ok {
-										textParts = append(textParts, text)
-									}
-								}
-							}
-						}
-						if len(textParts) > 0 {
-							chatResp.Choices[0].Message.Content = strings.Join(textParts, "\n")
-							slog.Info("extracted content from array format", "content_length", len(chatResp.Choices[0].Message.Content))
-						}
-					}
-				}
-			}
-		}
-	}
-
-	slog.Info("parsed response", "choices", len(chatResp.Choices), "content_length", len(chatResp.Choices[0].Message.Content))
+	slog.Info("parsed response", "choices", len(chatResp.Choices), "content_length", len(chatResp.Choices[0].Message.Content.String()))
 
 	return &chatResp, nil
 }
