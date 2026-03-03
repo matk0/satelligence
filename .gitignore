@@ -57,3 +57,4 @@ web/.kamal/secrets
 # ===================
 docker-compose.override.yml
 .env.production
+api/server
