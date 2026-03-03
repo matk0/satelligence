@@ -27,9 +27,6 @@ RUN apk add --no-cache ca-certificates tzdata
 # Copy binary from builder
 COPY --from=builder /trandor /app/trandor
 
-# Copy migrations
-COPY --from=builder /app/internal/db/migrations /app/migrations
-
 # Create non-root user
 RUN adduser -D -g '' appuser
 USER appuser
