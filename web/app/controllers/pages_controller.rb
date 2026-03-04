@@ -42,7 +42,7 @@ class PagesController < ApplicationController
           },
           response: {
             wallet_id: "string",
-            nwc_connection_string: "string (use in X-NWC header)",
+            nwc_connection_string: "string (use as Authorization Bearer token)",
             admin_key: "string (for wallet management)",
             invoice_key: "string (for creating deposit invoices)"
           }
@@ -163,7 +163,7 @@ class PagesController < ApplicationController
         }
       },
 
-      example_curl: 'curl -X POST "https://api.trandor.com/v1/chat/completions" -H "Content-Type: application/json" -H "Authorization: Bearer nostr+walletconnect://..." -d \'{"model":"gpt-4.1","messages":[{"role":"user","content":"Hello!"}]}\''
+      example_curl: 'curl -X POST "https://api.trandor.com/v1/chat/completions" -H "Content-Type: application/json" -H "Authorization: Bearer nostr+walletconnect://..." -d \'{"model":"gpt-5.2","messages":[{"role":"user","content":"Hello!"}]}\''
     }
 
     render json: manifest

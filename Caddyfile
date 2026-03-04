@@ -12,3 +12,8 @@ api.trandor.com {
 trandor.com {
     redir https://www.trandor.com{uri} permanent
 }
+
+# LNbits relay (for NWC WebSocket connections)
+relay.trandor.com {
+    reverse_proxy lnbits:5000
+}

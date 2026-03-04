@@ -86,7 +86,7 @@
     name: string  <span class="text-gray-500"># Optional wallet name</span>
   <span class="text-cyan-400">Response:</span>
     wallet_id: string
-    nwc_connection_string: string  <span class="text-gray-500"># Use this in X-NWC header</span>
+    nwc_connection_string: string  <span class="text-gray-500"># Use as Authorization Bearer token</span>
     admin_key: string              <span class="text-gray-500"># For wallet management</span>
     invoice_key: string            <span class="text-gray-500"># For creating invoices</span>
 
@@ -114,7 +114,7 @@
   cd trandor-proxy && npm install
   TRANDOR_NWC="nostr+walletconnect://..." npm start
   <span class="text-gray-500"># Then set: OPENAI_BASE_URL=http://localhost:8745/v1</span>
-  <span class="text-gray-500"># The proxy adds X-NWC header to all requests automatically.</span>
+  <span class="text-gray-500"># The proxy adds Authorization: Bearer header to all requests automatically.</span>
 
 <span class="text-cyan-400">CONTENT POLICY:</span>
   All requests are moderated. Violations result in rejection.
@@ -175,7 +175,7 @@ export OPENAI_API_KEY=unused</code></pre>
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer nostr+walletconnect://WALLET_PUBKEY?relay=wss://relay.example.com&secret=YOUR_SECRET" \
   -d '{
-    "model": "gpt-4.1",
+    "model": "gpt-5.2",
     "messages": [
       {"role": "user", "content": "What is Bitcoin?"}
     ],
@@ -426,7 +426,7 @@ export OPENAI_API_KEY=unused</code></pre>
               <span class="flex-shrink-0 w-7 h-7 bg-yellow-500 text-black rounded-full flex items-center justify-center font-bold text-sm">4</span>
               <div>
                 <strong class="text-white">Agent uses API</strong>
-                <p class="text-sm text-gray-400">Agent uses NWC connection string in X-NWC header for all requests</p>
+                <p class="text-sm text-gray-400">Agent uses NWC connection string as Authorization Bearer token for all requests</p>
               </div>
             </li>
           </ol>
@@ -462,7 +462,7 @@ curl "https://api.trandor.com/v1/wallet/abc123" \
 curl -X POST "https://api.trandor.com/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer &lt;nwc_connection_string&gt;" \
-  -d '{"model": "gpt-4.1", "messages": [...]}'</code></pre>
+  -d '{"model": "gpt-5.2", "messages": [...]}'</code></pre>
         </div>
 
         <!-- Security Note -->
@@ -502,7 +502,7 @@ curl -X POST "https://api.trandor.com/v1/chat/completions" \
           <p class="text-gray-300 mb-4">Returns list of available models. No authentication required.</p>
           <h4 class="text-white font-semibold mb-3">Response</h4>
           <div class="bg-slate-900 rounded p-4 overflow-x-auto">
-            <pre class="text-sm text-gray-300"><code>{"models": ["gpt-4.1", "gpt-4.1-mini", ...]}</code></pre>
+            <pre class="text-sm text-gray-300"><code>{"models": ["gpt-5.2", "gpt-5.2-mini", ...]}</code></pre>
           </div>
         </div>
 
@@ -539,7 +539,7 @@ curl -X POST "https://api.trandor.com/v1/chat/completions" \
           <h4 class="text-white font-semibold mb-3">Request Body</h4>
           <div class="bg-slate-900 rounded p-4 mb-6 overflow-x-auto">
             <pre class="text-sm text-gray-300"><code>{
-  "model": "gpt-4.1",            // Required: model ID from /v1/models
+  "model": "gpt-5.2",            // Required: model ID from /v1/models
   "messages": [                   // Required: conversation history
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello!"}
@@ -695,7 +695,7 @@ curl -X POST "https://api.trandor.com/v1/chat/completions" \
 
       <p class="text-gray-400 text-sm">
         Check <code class="text-yellow-400">GET /v1/models</code> for current available models.
-        Pricing varies by model - cheaper models like gpt-4.1-mini cost fractions of a satoshi per request.
+        Pricing varies by model - cheaper models like gpt-5.2-mini cost fractions of a satoshi per request.
       </p>
     </section>
 
@@ -720,7 +720,7 @@ response = requests.post(
         "Authorization": f"Bearer {NWC_URL}"
     },
     json={
-        "model": "gpt-4.1",
+        "model": "gpt-5.2",
         "messages": [{"role": "user", "content": "Hello!"}]
     }
 )
@@ -743,7 +743,7 @@ const response = await fetch("https://api.trandor.com/v1/chat/completions", {
     "Authorization": `Bearer ${NWC_URL}`
   },
   body: JSON.stringify({
-    model: "gpt-4.1",
+    model: "gpt-5.2",
     messages: [{ role: "user", content: "Hello!" }]
   })
 });
@@ -762,7 +762,7 @@ console.log(data.choices[0].message.content);</code></pre>
             <pre class="text-sm text-gray-300"><code>curl -X POST "https://api.trandor.com/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer nostr+walletconnect://..." \
-  -d '{"model":"gpt-4.1","messages":[{"role":"user","content":"Hello!"}]}' \
+  -d '{"model":"gpt-5.2","messages":[{"role":"user","content":"Hello!"}]}' \
   -v 2>&1 | grep -E "(X-Cost|X-Charge|content)"</code></pre>
           </div>
         </div>

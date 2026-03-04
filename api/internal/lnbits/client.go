@@ -3,14 +3,14 @@ package lnbits
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
-
-	"crypto/rand"
 )
 
 // Client interacts with LNbits API for hosted wallet management
@@ -66,24 +66,23 @@ type Invoice struct {
 	CheckingID     string `json:"checking_id"`
 }
 
-// CreateUserRequest is the request body for creating a user
-type CreateUserRequest struct {
-	UserName   string `json:"user_name"`
-	WalletName string `json:"wallet_name"`
+// CreateAccountRequest is the request body for creating an account/wallet (LNbits core API)
+type CreateAccountRequest struct {
+	Name string `json:"name"`
 }
 
-// CreateUserResponse is the response from creating a user
+// CreateUserResponse wraps the wallet creation response to maintain API compatibility
 type CreateUserResponse struct {
 	ID      string   `json:"id"`
 	Name    string   `json:"name"`
 	Wallets []Wallet `json:"wallets"`
 }
 
-// CreateUser creates a new LNbits user with an initial wallet
+// CreateUser creates a new LNbits wallet using the core API (POST /api/v1/account)
+// This replaces the deprecated usermanager extension
 func (c *Client) CreateUser(ctx context.Context, userName, walletName string) (*CreateUserResponse, error) {
-	reqBody := CreateUserRequest{
-		UserName:   userName,
-		WalletName: walletName,
+	reqBody := CreateAccountRequest{
+		Name: walletName,
 	}
 
 	body, err := json.Marshal(reqBody)
@@ -91,13 +90,14 @@ func (c *Client) CreateUser(ctx context.Context, userName, walletName string) (*
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/usermanager/api/v1/users", bytes.NewReader(body))
+	// Use core LNbits API instead of usermanager extension
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/v1/account", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Api-Key", c.adminKey)
+	// Note: /api/v1/account doesn't require auth for wallet creation
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -114,12 +114,48 @@ func (c *Client) CreateUser(ctx context.Context, userName, walletName string) (*
 		return nil, fmt.Errorf("LNbits API error (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
-	var result CreateUserResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
+	// Parse the wallet response from core API
+	var wallet Wallet
+	if err := json.Unmarshal(respBody, &wallet); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	return &result, nil
+	// Enable NWC extension for the new user using super admin
+	if err := c.EnableExtensionForUser(ctx, wallet.UserID, "nwcprovider"); err != nil {
+		// Log but don't fail - extension might already be enabled
+		fmt.Printf("Warning: failed to enable nwcprovider extension: %v\n", err)
+	}
+
+	// Wrap in CreateUserResponse for compatibility with existing code
+	return &CreateUserResponse{
+		ID:      wallet.UserID,
+		Name:    wallet.Name,
+		Wallets: []Wallet{wallet},
+	}, nil
+}
+
+// EnableExtensionForUser enables an extension for a user using the super admin key
+func (c *Client) EnableExtensionForUser(ctx context.Context, userID, extensionID string) error {
+	// Use the admin key as super admin to enable extension for the user
+	req, err := http.NewRequestWithContext(ctx, "PUT", c.baseURL+"/api/v1/extension/"+extensionID+"/enable?usr="+userID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("X-Api-Key", c.adminKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("LNbits API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
 }
 
 // CreateWallet creates a new wallet for an existing user
@@ -263,10 +299,13 @@ func (c *Client) CreateNWCConnection(ctx context.Context, walletAdminKey, descri
 	}
 
 	// Create NWC connection via PUT /nwcprovider/api/v1/nwc/{pubkey}
+	// Set expiry to 10 years from now
+	expiresAt := time.Now().AddDate(10, 0, 0).Unix()
 	reqBody := map[string]interface{}{
 		"description": description,
 		"permissions": []string{"pay_invoice", "make_invoice", "lookup_invoice", "get_balance", "list_transactions"},
 		"budgets":     []interface{}{}, // No budget limits
+		"expires_at":  expiresAt,
 	}
 
 	body, err := json.Marshal(reqBody)
@@ -298,7 +337,7 @@ func (c *Client) CreateNWCConnection(ctx context.Context, walletAdminKey, descri
 	}
 
 	// Now get the pairing URL
-	pairingURL, err := c.getNWCPairingURL(ctx, walletAdminKey, pubkey)
+	pairingURL, err := c.getNWCPairingURL(ctx, pubkey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pairing URL: %w", err)
 	}
@@ -311,55 +350,13 @@ func (c *Client) CreateNWCConnection(ctx context.Context, walletAdminKey, descri
 }
 
 // getNWCPairingURL gets the pairing URL for an NWC connection
-func (c *Client) getNWCPairingURL(ctx context.Context, walletAdminKey, pubkey string) (string, error) {
-	// The pairing endpoint uses secret, which is derived from pubkey
-	// GET /nwcprovider/api/v1/pairing/{secret}
-	// For simplicity, we'll get the NWC details which should include the pairing info
-	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/nwcprovider/api/v1/nwc/"+pubkey, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("X-Api-Key", walletAdminKey)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("LNbits NWC API error (status %d): %s", resp.StatusCode, string(respBody))
-	}
-
-	var result struct {
-		Pubkey     string `json:"pubkey"`
-		Secret     string `json:"secret"`
-		PairingURI string `json:"pairing_uri"`
-	}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	// If pairing_uri is directly in the response, use it
-	if result.PairingURI != "" {
-		return result.PairingURI, nil
-	}
-
-	// Otherwise, fetch from pairing endpoint using secret
-	if result.Secret != "" {
-		return c.fetchPairingURL(ctx, result.Secret)
-	}
-
-	return "", fmt.Errorf("could not determine pairing URL")
+func (c *Client) getNWCPairingURL(ctx context.Context, pubkey string) (string, error) {
+	// The pairing endpoint uses the pubkey directly as the secret
+	// GET /nwcprovider/api/v1/pairing/{pubkey}
+	return c.fetchPairingURL(ctx, pubkey)
 }
 
-// fetchPairingURL fetches the pairing URL using the secret
+// fetchPairingURL fetches the pairing URL using the secret/pubkey
 func (c *Client) fetchPairingURL(ctx context.Context, secret string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/nwcprovider/api/v1/pairing/"+secret, nil)
 	if err != nil {
@@ -381,15 +378,18 @@ func (c *Client) fetchPairingURL(ctx context.Context, secret string) (string, er
 		return "", fmt.Errorf("LNbits pairing API error (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
-	var result struct {
-		PairingURI string `json:"pairing_uri"`
-	}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		// The response might be just the URI string
-		return string(respBody), nil
+	// Response is a JSON-encoded string (with quotes), so unmarshal it
+	var pairingURL string
+	if err := json.Unmarshal(respBody, &pairingURL); err != nil {
+		// Fallback: strip quotes if present
+		pairingURL = strings.Trim(string(respBody), "\"")
 	}
 
-	return result.PairingURI, nil
+	// Replace internal Docker URL with external relay URL
+	pairingURL = strings.Replace(pairingURL, "ws://lnbits:5000", "wss://relay.trandor.com", 1)
+	pairingURL = strings.Replace(pairingURL, "ws://localhost:5000", "wss://relay.trandor.com", 1)
+
+	return pairingURL, nil
 }
 
 // GetUserWallets gets all wallets for a user

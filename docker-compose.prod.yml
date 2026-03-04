@@ -68,6 +68,7 @@ services:
       - LNBITS_ADMIN_UI=true
       - LNBITS_SITE_TITLE=Trandor Wallets
       - LNBITS_DEFAULT_WALLET_NAME=Agent Wallet
+      - LNBITS_EXTENSIONS_DEFAULT_INSTALL=nwcprovider
     volumes:
       - lnbits_data:/app/data
     healthcheck:
