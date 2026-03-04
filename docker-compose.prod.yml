@@ -60,8 +60,20 @@ services:
       api:
         condition: service_healthy
 
+  # Nostr Relay - for NWC communication
+  nostr-relay:
+    image: scsibug/nostr-rs-relay:latest
+    restart: unless-stopped
+    volumes:
+      - nostr_data:/usr/src/app/db
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /proc/1/exe"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
   # LNbits - Hosted wallet service for agents
-  # Uses nostrclient extension as internal relay multiplexer for NWC
   lnbits:
     image: lnbits/lnbits:latest
     restart: unless-stopped
@@ -75,16 +87,16 @@ services:
       - LNBITS_ADMIN_UI=true
       - LNBITS_SITE_TITLE=Trandor Wallets
       - LNBITS_DEFAULT_WALLET_NAME=Agent Wallet
-      # Extensions: nwcprovider for NWC, nostrclient as internal relay multiplexer
-      - LNBITS_EXTENSIONS_DEFAULT_INSTALL=nwcprovider,nostrclient
-      # NWC Provider uses nostrclient extension as relay
-      # nostrclient exposes WebSocket at /nostrclient/api/v1/relay
-      - NWCPROVIDER_RELAY=nostrclient
+      # NWC Provider extension
+      - LNBITS_EXTENSIONS_DEFAULT_INSTALL=nwcprovider
+      # NWC Provider uses external nostr relay
+      - NWCPROVIDER_RELAY=ws://nostr-relay:8080
       - NWCPROVIDER_RELAY_ALIAS=wss://relay.trandor.com
-      # nostrclient configuration - enable public websocket endpoint
-      - NOSTRCLIENT_PUBLIC_WS=true
     volumes:
       - lnbits_data:/app/data
+    depends_on:
+      nostr-relay:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/v1/health"]
       interval: 30s
@@ -97,3 +109,4 @@ volumes:
   caddy_config:
   lnbits_data:
   api_data:
+  nostr_data:
