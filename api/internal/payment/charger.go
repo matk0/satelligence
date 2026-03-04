@@ -30,15 +30,22 @@ type ChargeResult struct {
 	AmountUSD   float64
 }
 
+// Blacklister is an interface for blacklisting wallets
+type Blacklister interface {
+	Add(pubkey string)
+}
+
 // Charger handles post-charge payment operations
 type Charger struct {
 	blinkClient *blink.Client
+	blacklist   Blacklister
 }
 
 // NewCharger creates a new Charger instance
-func NewCharger(blinkClient *blink.Client) *Charger {
+func NewCharger(blinkClient *blink.Client, blacklist Blacklister) *Charger {
 	return &Charger{
 		blinkClient: blinkClient,
+		blacklist:   blacklist,
 	}
 }
 
@@ -74,11 +81,16 @@ func (c *Charger) PostCharge(
 
 	_, err = nwcClient.PayInvoice(ctx, invoice.PaymentRequest, 30*time.Second)
 	if err != nil {
-		slog.Warn("post-charge failed, accepting loss",
+		walletPubkey := nwcClient.WalletPubkey()
+		slog.Warn("post-charge failed, accepting loss and blacklisting wallet",
 			"error", err,
 			"amount_sats", cost.TotalSats,
-			"wallet_pubkey", nwcClient.WalletPubkey(),
+			"wallet_pubkey", walletPubkey,
 		)
+		// Blacklist the wallet to prevent future scams
+		if c.blacklist != nil {
+			c.blacklist.Add(walletPubkey)
+		}
 		return &ChargeResult{
 			Status:     ChargePaymentFailed,
 			AmountSats: cost.TotalSats,
@@ -125,11 +137,16 @@ func (c *Charger) PostChargeAsync(
 
 		_, err = nwcClient.PayInvoice(ctx, invoice.PaymentRequest, 30*time.Second)
 		if err != nil {
-			slog.Warn("streaming post-charge failed, accepting loss",
+			walletPubkey := nwcClient.WalletPubkey()
+			slog.Warn("streaming post-charge failed, accepting loss and blacklisting wallet",
 				"error", err,
 				"amount_sats", cost.TotalSats,
-				"wallet_pubkey", nwcClient.WalletPubkey(),
+				"wallet_pubkey", walletPubkey,
 			)
+			// Blacklist the wallet to prevent future scams
+			if c.blacklist != nil {
+				c.blacklist.Add(walletPubkey)
+			}
 			return
 		}
 

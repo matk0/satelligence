@@ -78,23 +78,23 @@ class PagesController < ApplicationController
       auth: {
         type: "nwc",
         description: "Nostr Wallet Connect - Lightning payment serves as authentication",
-        header: "X-NWC",
-        format: "nostr+walletconnect://WALLET_PUBKEY?relay=wss://relay.example.com&secret=SECRET",
+        header: "Authorization",
+        format: "Bearer nostr+walletconnect://WALLET_PUBKEY?relay=wss://relay.example.com&secret=SECRET",
         setup_guide: "https://www.trandor.com/docs#nwc-setup-guide",
         requirements: [
           "NWC connection string with pay_invoice permission",
-          "Sufficient balance for 2x estimated request cost (refund issued after)"
+          "Minimum $0.50 balance in wallet"
         ],
         options: [
           {
             name: "Bring Your Own Wallet",
             description: "Human sets up wallet (Alby, etc.) and provides NWC string to agent",
-            steps: ["Human creates NWC connection in their wallet", "Human gives NWC string to agent", "Agent uses NWC string in X-NWC header"]
+            steps: ["Human creates NWC connection in their wallet", "Human gives NWC string to agent", "Agent uses NWC string as Bearer token"]
           },
           {
             name: "Hosted Wallet",
             description: "Agent creates wallet via API, human funds it via Lightning invoice",
-            steps: ["Agent calls POST /v1/wallet/create", "Agent gets nwc_connection_string", "Agent creates deposit invoice via POST /v1/wallet/{id}/deposit", "Human pays invoice", "Agent uses nwc_connection_string in X-NWC header"]
+            steps: ["Agent calls POST /v1/wallet/create", "Agent gets nwc_connection_string", "Agent creates deposit invoice via POST /v1/wallet/{id}/deposit", "Human pays invoice", "Agent uses nwc_connection_string as Bearer token"]
           }
         ],
         note: "For BYOW, your human operator sets up the wallet. For hosted wallets, the agent creates the wallet and human just funds it."
@@ -134,18 +134,16 @@ class PagesController < ApplicationController
       },
 
       response_headers: {
-        "X-Charged-Sats": "Amount charged upfront (2x estimate)",
         "X-Cost-Sats": "Actual cost in satoshis",
         "X-Cost-USD": "Actual cost in USD",
-        "X-Refund-Sats": "Amount refunded to wallet",
-        "X-Refund-Status": "success, failed, or none"
+        "X-Charge-Status": "success, pending, or failed"
       },
 
       pricing: {
         unit: "satoshis",
         model: "pay-per-request",
         markup: "5% over OpenAI prices",
-        note: "2x estimated cost charged upfront, difference refunded after response"
+        note: "$0.50 minimum balance required, actual cost charged after response"
       },
 
       capabilities: [
@@ -165,7 +163,7 @@ class PagesController < ApplicationController
         }
       },
 
-      example_curl: 'curl -X POST "https://api.trandor.com/v1/chat/completions" -H "Content-Type: application/json" -H "X-NWC: nostr+walletconnect://..." -d \'{"model":"gpt-4.1","messages":[{"role":"user","content":"Hello!"}]}\''
+      example_curl: 'curl -X POST "https://api.trandor.com/v1/chat/completions" -H "Content-Type: application/json" -H "Authorization: Bearer nostr+walletconnect://..." -d \'{"model":"gpt-4.1","messages":[{"role":"user","content":"Hello!"}]}\''
     }
 
     render json: manifest

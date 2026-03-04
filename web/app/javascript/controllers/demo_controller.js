@@ -14,12 +14,9 @@ export default class extends Controller {
   static steps = {
     wallet_connect: { label: "Connecting to wallet", icon: "wallet" },
     moderation: { label: "Content moderation", icon: "shield" },
-    cost_estimate: { label: "Estimating cost", icon: "calculator" },
-    invoice_create: { label: "Creating invoice", icon: "receipt" },
-    payment_request: { label: "Processing payment", icon: "lightning" },
+    balance_check: { label: "Checking balance", icon: "calculator" },
     generation: { label: "Generating response", icon: "brain" },
-    cost_calculate: { label: "Calculating final cost", icon: "calculator" },
-    refund: { label: "Processing refund", icon: "refund" }
+    payment: { label: "Processing payment", icon: "lightning" }
   }
 
   connect() {
@@ -121,7 +118,7 @@ export default class extends Controller {
     const streamingContent = responseBlock.querySelector('.streaming-content')
     const costDisplay = responseBlock.querySelector('.cost-display')
     const costUsdDisplay = responseBlock.querySelector('.cost-usd-display')
-    const refundDisplay = responseBlock.querySelector('.refund-display')
+    const chargeStatusDisplay = responseBlock.querySelector('.charge-status-display')
 
     // Scroll to show the new content
     stepsBlock.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -131,7 +128,7 @@ export default class extends Controller {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-NWC": nwc
+          "Authorization": `Bearer ${nwc}`
         },
         body: JSON.stringify({
           model: model,
@@ -188,7 +185,7 @@ export default class extends Controller {
       if (finalData) {
         costDisplay.textContent = finalData.cost_sats || 0
         costUsdDisplay.textContent = `$${(finalData.cost_usd || 0).toFixed(6)}`
-        refundDisplay.textContent = finalData.refund_sats || 0
+        chargeStatusDisplay.textContent = finalData.charge_status || 'unknown'
 
         this.messages.push({ role: "assistant", content: finalData.content || fullContent })
       } else if (fullContent) {
@@ -253,7 +250,7 @@ export default class extends Controller {
         <div class="streaming-content text-gray-200 whitespace-pre-wrap"></div>
         <div class="mt-3 pt-2 border-t border-slate-700 flex flex-wrap gap-4 text-xs">
           <span class="text-gray-500">Cost: <span class="text-yellow-400 cost-display">-</span> sats (<span class="text-yellow-400 cost-usd-display">-</span>)</span>
-          <span class="text-gray-500">Refund: <span class="text-green-400 refund-display">-</span> sats</span>
+          <span class="text-gray-500">Status: <span class="text-green-400 charge-status-display">-</span></span>
         </div>
       </div>
     `

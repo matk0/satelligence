@@ -27,6 +27,7 @@ type NWCHandler struct {
 	modelFeed      *models.ModelFeed
 	config         *config.Config
 	rateLimiter    *WalletRateLimiter
+	blacklist      *WalletBlacklist
 }
 
 func NewNWCHandler(
@@ -37,6 +38,7 @@ func NewNWCHandler(
 	modelFeed *models.ModelFeed,
 	cfg *config.Config,
 	rateLimiter *WalletRateLimiter,
+	blacklist *WalletBlacklist,
 ) *NWCHandler {
 	return &NWCHandler{
 		providerRouter: providerRouter,
@@ -46,6 +48,7 @@ func NewNWCHandler(
 		modelFeed:      modelFeed,
 		config:         cfg,
 		rateLimiter:    rateLimiter,
+		blacklist:      blacklist,
 	}
 }
 
@@ -71,10 +74,11 @@ func extractNWCFromAuth(r *http.Request) (string, error) {
 
 // ChatCompletions handles chat requests with NWC auto-payment
 // Flow:
-// 1. Rate limit check per wallet pubkey
-// 2. Check balance >= estimated max cost
-// 3. Call AI provider
-// 4. Post-charge actual cost (accept small losses if payment fails)
+// 1. Check blacklist
+// 2. Rate limit check per wallet pubkey
+// 3. Check balance >= minimum ($0.50)
+// 4. Call AI provider
+// 5. Post-charge actual cost (blacklist wallet if payment fails)
 func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -93,8 +97,15 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	defer nwcClient.Close()
 
-	// Rate limit check per wallet pubkey
+	// Check blacklist
 	walletPubkey := nwcClient.WalletPubkey()
+	if h.blacklist != nil && h.blacklist.IsBlacklisted(walletPubkey) {
+		slog.Info("blacklisted wallet rejected", "wallet_pubkey", walletPubkey)
+		writeError(w, http.StatusForbidden, "blacklisted", "Wallet is blacklisted due to previous payment failures")
+		return
+	}
+
+	// Rate limit check per wallet pubkey
 	if err := h.rateLimiter.Acquire(walletPubkey); err != nil {
 		slog.Info("rate limit exceeded", "wallet_pubkey", walletPubkey)
 		writeError(w, http.StatusTooManyRequests, "rate_limited", "Too many concurrent requests. Please wait for previous requests to complete.")
@@ -135,25 +146,27 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Estimate max cost based on input + max_tokens output
-	estimatedMaxCost := h.billing.EstimateCost(req.Model, inputText, req.MaxTokens)
-	if estimatedMaxCost < 1 {
-		estimatedMaxCost = 1
-	}
+	// Check wallet balance >= minimum requirement ($0.50)
+	minBalanceSats := h.billing.USDToSats(h.config.MinBalanceUSD)
+	balanceResult := CheckMinBalance(ctx, nwcClient, minBalanceSats, 10*time.Second)
 
-	// Check wallet balance >= estimated max cost
-	balanceResult := CheckBalance(ctx, nwcClient, estimatedMaxCost, 10*time.Second)
-	if !balanceResult.OK {
+	if balanceResult.SkippedCheck {
+		// Wallet doesn't support get_balance - proceed with post-charge
+		// If payment fails, wallet will be blacklisted
+		slog.Info("wallet doesn't support balance check, proceeding with post-charge",
+			"wallet_pubkey", walletPubkey,
+		)
+	} else if !balanceResult.OK {
 		writeError(w, http.StatusPaymentRequired, "insufficient_balance",
-			fmt.Sprintf("Insufficient balance: have %d sats, need %d sats for this request",
-				balanceResult.BalanceSats, balanceResult.EstimatedCost))
+			fmt.Sprintf("Insufficient balance: have %d sats, need %d sats minimum",
+				balanceResult.BalanceSats, minBalanceSats))
 		return
 	}
 
 	slog.Info("processing request",
 		"model", req.Model,
 		"max_tokens", req.MaxTokens,
-		"estimated_max_cost_sats", estimatedMaxCost,
+		"balance_sats", balanceResult.BalanceSats,
 		"stream", req.Stream,
 	)
 
@@ -429,8 +442,15 @@ func (h *NWCHandler) ChatCompletionsStream(w http.ResponseWriter, r *http.Reques
 	}
 	defer nwcClient.Close()
 
-	// Rate limit check
+	// Check blacklist
 	walletPubkey := nwcClient.WalletPubkey()
+	if h.blacklist != nil && h.blacklist.IsBlacklisted(walletPubkey) {
+		sendStep("wallet_connect", "error", nil)
+		sendError("blacklisted", "Wallet is blacklisted due to previous payment failures")
+		return
+	}
+
+	// Rate limit check
 	if err := h.rateLimiter.Acquire(walletPubkey); err != nil {
 		sendStep("wallet_connect", "error", nil)
 		sendError("rate_limited", "Too many concurrent requests")
@@ -477,28 +497,25 @@ func (h *NWCHandler) ChatCompletionsStream(w http.ResponseWriter, r *http.Reques
 		sendStep("moderation", "complete", nil)
 	}
 
-	// Step 3: Balance check
+	// Step 3: Balance check (minimum $0.50 requirement)
 	sendStep("balance_check", "pending", nil)
 
-	estimatedMaxCost := h.billing.EstimateCost(req.Model, inputText, req.MaxTokens)
-	if estimatedMaxCost < 1 {
-		estimatedMaxCost = 1
-	}
+	minBalanceSats := h.billing.USDToSats(h.config.MinBalanceUSD)
+	balanceResult := CheckMinBalance(ctx, nwcClient, minBalanceSats, 10*time.Second)
 
-	balanceResult := CheckBalance(ctx, nwcClient, estimatedMaxCost, 10*time.Second)
 	if balanceResult.SkippedCheck {
 		sendStep("balance_check", "complete", map[string]interface{}{
-			"warning":            "balance check unavailable",
-			"estimated_max_sats": estimatedMaxCost,
+			"warning":          "balance check unavailable, proceeding with post-charge",
+			"min_balance_sats": minBalanceSats,
 		})
 	} else if !balanceResult.OK {
 		sendStep("balance_check", "error", nil)
-		sendError("insufficient_balance", fmt.Sprintf("Need %d sats, have %d", estimatedMaxCost, balanceResult.BalanceSats))
+		sendError("insufficient_balance", fmt.Sprintf("Need %d sats minimum, have %d", minBalanceSats, balanceResult.BalanceSats))
 		return
 	} else {
 		sendStep("balance_check", "complete", map[string]interface{}{
-			"balance_sats":       balanceResult.BalanceSats,
-			"estimated_max_sats": estimatedMaxCost,
+			"balance_sats":     balanceResult.BalanceSats,
+			"min_balance_sats": minBalanceSats,
 		})
 	}
 

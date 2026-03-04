@@ -25,6 +25,7 @@ type ResponsesHandler struct {
 	modelFeed      *models.ModelFeed
 	config         *config.Config
 	rateLimiter    *WalletRateLimiter
+	blacklist      *WalletBlacklist
 }
 
 func NewResponsesHandler(
@@ -34,6 +35,7 @@ func NewResponsesHandler(
 	modelFeed *models.ModelFeed,
 	cfg *config.Config,
 	rateLimiter *WalletRateLimiter,
+	blacklist *WalletBlacklist,
 ) *ResponsesHandler {
 	return &ResponsesHandler{
 		openaiProvider: openaiProvider,
@@ -42,15 +44,17 @@ func NewResponsesHandler(
 		modelFeed:      modelFeed,
 		config:         cfg,
 		rateLimiter:    rateLimiter,
+		blacklist:      blacklist,
 	}
 }
 
 // Responses handles POST /v1/responses with NWC payment
 // Flow:
-// 1. Rate limit check per wallet pubkey
-// 2. Check balance >= estimated max cost
-// 3. Call OpenAI Responses API
-// 4. Post-charge actual cost (accept small losses if payment fails)
+// 1. Check blacklist
+// 2. Rate limit check per wallet pubkey
+// 3. Check balance >= minimum ($0.50)
+// 4. Call OpenAI Responses API
+// 5. Post-charge actual cost (blacklist wallet if payment fails)
 func (h *ResponsesHandler) Responses(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -69,8 +73,15 @@ func (h *ResponsesHandler) Responses(w http.ResponseWriter, r *http.Request) {
 	}
 	defer nwcClient.Close()
 
-	// Rate limit check per wallet pubkey
+	// Check blacklist
 	walletPubkey := nwcClient.WalletPubkey()
+	if h.blacklist != nil && h.blacklist.IsBlacklisted(walletPubkey) {
+		slog.Info("blacklisted wallet rejected", "wallet_pubkey", walletPubkey)
+		writeError(w, http.StatusForbidden, "blacklisted", "Wallet is blacklisted due to previous payment failures")
+		return
+	}
+
+	// Rate limit check per wallet pubkey
 	if err := h.rateLimiter.Acquire(walletPubkey); err != nil {
 		slog.Info("rate limit exceeded", "wallet_pubkey", walletPubkey)
 		writeError(w, http.StatusTooManyRequests, "rate_limited", "Too many concurrent requests. Please wait for previous requests to complete.")
@@ -112,25 +123,27 @@ func (h *ResponsesHandler) Responses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Estimate max cost based on input + max_output_tokens
-	estimatedMaxCost := h.billing.EstimateCost(req.Model, inputText, req.MaxOutputTokens)
-	if estimatedMaxCost < 1 {
-		estimatedMaxCost = 1
-	}
+	// Check wallet balance >= minimum requirement ($0.50)
+	minBalanceSats := h.billing.USDToSats(h.config.MinBalanceUSD)
+	balanceResult := CheckMinBalance(ctx, nwcClient, minBalanceSats, 10*time.Second)
 
-	// Check wallet balance >= estimated max cost
-	balanceResult := CheckBalance(ctx, nwcClient, estimatedMaxCost, 10*time.Second)
-	if !balanceResult.OK {
+	if balanceResult.SkippedCheck {
+		// Wallet doesn't support get_balance - proceed with post-charge
+		// If payment fails, wallet will be blacklisted
+		slog.Info("wallet doesn't support balance check, proceeding with post-charge",
+			"wallet_pubkey", walletPubkey,
+		)
+	} else if !balanceResult.OK {
 		writeError(w, http.StatusPaymentRequired, "insufficient_balance",
-			fmt.Sprintf("Insufficient balance: have %d sats, need %d sats for this request",
-				balanceResult.BalanceSats, balanceResult.EstimatedCost))
+			fmt.Sprintf("Insufficient balance: have %d sats, need %d sats minimum",
+				balanceResult.BalanceSats, minBalanceSats))
 		return
 	}
 
 	slog.Info("processing responses request",
 		"model", req.Model,
 		"max_output_tokens", req.MaxOutputTokens,
-		"estimated_max_cost_sats", estimatedMaxCost,
+		"balance_sats", balanceResult.BalanceSats,
 	)
 
 	// Call OpenAI Responses API
@@ -224,8 +237,14 @@ func (h *ResponsesHandler) ResponsesStream(w http.ResponseWriter, r *http.Reques
 	}
 	defer nwcClient.Close()
 
-	// Rate limit check
+	// Check blacklist
 	walletPubkey := nwcClient.WalletPubkey()
+	if h.blacklist != nil && h.blacklist.IsBlacklisted(walletPubkey) {
+		sendError("blacklisted", "Wallet is blacklisted due to previous payment failures")
+		return
+	}
+
+	// Rate limit check
 	if err := h.rateLimiter.Acquire(walletPubkey); err != nil {
 		sendError("rate_limited", "Too many concurrent requests")
 		return
@@ -262,15 +281,17 @@ func (h *ResponsesHandler) ResponsesStream(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Estimate max cost and check balance
-	estimatedMaxCost := h.billing.EstimateCost(req.Model, inputText, req.MaxOutputTokens)
-	if estimatedMaxCost < 1 {
-		estimatedMaxCost = 1
-	}
+	// Check wallet balance >= minimum requirement ($0.50)
+	minBalanceSats := h.billing.USDToSats(h.config.MinBalanceUSD)
+	balanceResult := CheckMinBalance(ctx, nwcClient, minBalanceSats, 10*time.Second)
 
-	balanceResult := CheckBalance(ctx, nwcClient, estimatedMaxCost, 10*time.Second)
-	if !balanceResult.OK {
-		sendError("insufficient_balance", fmt.Sprintf("Need %d sats, have %d", estimatedMaxCost, balanceResult.BalanceSats))
+	if balanceResult.SkippedCheck {
+		// Wallet doesn't support get_balance - proceed with post-charge
+		slog.Info("wallet doesn't support balance check, proceeding with post-charge",
+			"wallet_pubkey", walletPubkey,
+		)
+	} else if !balanceResult.OK {
+		sendError("insufficient_balance", fmt.Sprintf("Need %d sats minimum, have %d", minBalanceSats, balanceResult.BalanceSats))
 		return
 	}
 

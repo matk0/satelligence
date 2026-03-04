@@ -67,8 +67,16 @@ func main() {
 	// Initialize rate limiter for concurrent requests per wallet
 	rateLimiter := api.NewWalletRateLimiter(cfg.MaxConcurrentRequests)
 
-	// Initialize payment charger
-	charger := payment.NewCharger(blinkClient)
+	// Initialize wallet blacklist
+	blacklist := api.NewWalletBlacklist(cfg.BlacklistFile)
+	if err := blacklist.Load(); err != nil {
+		slog.Error("failed to load wallet blacklist", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("wallet blacklist loaded", "count", blacklist.Count())
+
+	// Initialize payment charger (with blacklist for failed payments)
+	charger := payment.NewCharger(blinkClient, blacklist)
 
 	// Initialize NWC handler (the only payment method)
 	nwcHandler := api.NewNWCHandler(
@@ -79,6 +87,7 @@ func main() {
 		modelFeed,
 		cfg,
 		rateLimiter,
+		blacklist,
 	)
 
 	// Initialize Responses API handler
@@ -89,6 +98,7 @@ func main() {
 		modelFeed,
 		cfg,
 		rateLimiter,
+		blacklist,
 	)
 
 	// Initialize LNbits client for hosted wallets (optional)

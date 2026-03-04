@@ -10,9 +10,9 @@ class ApiController < ApplicationController
   # POST /api/chat
   def chat
     response = post_to_go("/v1/chat/completions", request.raw_post, {
-      "X-NWC" => request.headers["X-NWC"]
+      "Authorization" => request.headers["Authorization"]
     })
-    proxy_response(response, %w[X-Charged-Sats X-Cost-Sats X-Cost-USD X-Refund-Sats X-Refund-Status])
+    proxy_response(response, %w[X-Cost-Sats X-Cost-USD X-Charge-Status])
   end
 
   # POST /api/chat/stream - SSE streaming endpoint
@@ -29,7 +29,7 @@ class ApiController < ApplicationController
 
     req = Net::HTTP::Post.new(uri.path)
     req["Content-Type"] = "application/json"
-    req["X-NWC"] = request.headers["X-NWC"]
+    req["Authorization"] = request.headers["Authorization"]
     req.body = request.raw_post
 
     http.request(req) do |upstream_response|

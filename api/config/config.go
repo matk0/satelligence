@@ -22,7 +22,8 @@ type Config struct {
 
 	// Abuse protection
 	MaxStrikes            int
-	MaxConcurrentRequests int // Max concurrent requests per wallet pubkey
+	MaxConcurrentRequests int    // Max concurrent requests per wallet pubkey
+	BlacklistFile         string // Path to wallet blacklist file
 
 	// Server
 	Port string
@@ -51,7 +52,8 @@ func Load() *Config {
 		CheckBalanceFirst: getEnvBool("CHECK_BALANCE_FIRST", true),
 		MaxStrikes:            getEnvInt("MAX_STRIKES", 3),
 		MaxConcurrentRequests: getEnvInt("MAX_CONCURRENT_REQUESTS", 3),
-		Port:           getEnv("API_PORT", "8080"),
+		BlacklistFile:         getEnv("BLACKLIST_FILE", "blacklist.json"),
+		Port:                  getEnv("API_PORT", "8080"),
 		Treasury: TreasuryConfig{
 			Enabled:       getEnvBool("TREASURY_ENABLED", false),
 			ThresholdSats: getEnvInt64("TREASURY_THRESHOLD_SATS", 1000),
