@@ -17,3 +17,8 @@ trandor.com {
 relay.trandor.com {
     reverse_proxy nostr-relay:8080
 }
+
+# LNbits admin UI
+lnbits.trandor.com {
+    reverse_proxy lnbits:5000
+}
