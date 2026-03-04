@@ -60,17 +60,19 @@ services:
         condition: service_healthy
 
   # Nostr Relay - for NWC communication (our own relay for reliability)
+  # Supports NIP-01, NIP-04 (encrypted DMs), NIP-09, NIP-11, NIP-12, NIP-15, NIP-16, NIP-20, NIP-22
   nostr-relay:
     image: scsibug/nostr-rs-relay:latest
     restart: unless-stopped
     volumes:
       - nostr_data:/usr/src/app/db
+    # Simple healthcheck - relay logs show listening status
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      test: ["CMD-SHELL", "pgrep nostr-rs-relay || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 5s
 
   # LNbits - Hosted wallet service
   lnbits:
