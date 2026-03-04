@@ -145,3 +145,8 @@ func (c *Calculator) GetBTCPrice() float64 {
 func (c *Calculator) GetMarkupPercent() float64 {
 	return c.markupPercent
 }
+
+// USDToSats converts USD to satoshis using current BTC price
+func (c *Calculator) USDToSats(usd float64) int64 {
+	return c.priceFeed.USDToSats(usd)
+}

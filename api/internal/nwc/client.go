@@ -175,6 +175,11 @@ type MakeInvoiceResult struct {
 	PaymentHash string `json:"payment_hash"`
 }
 
+// GetBalanceResult for get_balance response
+type GetBalanceResult struct {
+	Balance int64 `json:"balance"` // in millisats
+}
+
 // sendRequest sends an NWC request and returns the response
 func (c *Client) sendRequest(ctx context.Context, method string, params interface{}, timeout time.Duration) (*NWCResponse, error) {
 	if err := c.Connect(ctx); err != nil {
@@ -313,4 +318,24 @@ func (c *Client) MakeInvoice(ctx context.Context, amountSats int64, description 
 	}
 
 	return result.Invoice, nil
+}
+
+// GetBalance returns the wallet balance in satoshis
+func (c *Client) GetBalance(ctx context.Context, timeout time.Duration) (balanceSats int64, err error) {
+	resp, err := c.sendRequest(ctx, "get_balance", struct{}{}, timeout)
+	if err != nil {
+		return 0, err
+	}
+
+	if resp.Error != nil {
+		return 0, fmt.Errorf("get_balance failed: %s - %s", resp.Error.Code, resp.Error.Message)
+	}
+
+	var result GetBalanceResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return 0, fmt.Errorf("failed to parse result: %w", err)
+	}
+
+	// Convert millisats to sats
+	return result.Balance / 1000, nil
 }

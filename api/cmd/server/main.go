@@ -63,6 +63,9 @@ func main() {
 	modelFeed := models.NewModelFeed(cfg.OpenAIAPIKey, billing.ModelPricing)
 	go modelFeed.Start(context.Background())
 
+	// Initialize rate limiter for concurrent requests per wallet
+	rateLimiter := api.NewWalletRateLimiter(cfg.MaxConcurrentRequests)
+
 	// Initialize NWC handler (the only payment method)
 	nwcHandler := api.NewNWCHandler(
 		providerRouter,
@@ -71,6 +74,7 @@ func main() {
 		openaiProvider, // for content moderation
 		modelFeed,
 		cfg,
+		rateLimiter,
 	)
 
 	// Initialize Responses API handler
@@ -80,6 +84,7 @@ func main() {
 		blinkClient,
 		modelFeed,
 		cfg,
+		rateLimiter,
 	)
 
 	// Initialize LNbits client for hosted wallets (optional)

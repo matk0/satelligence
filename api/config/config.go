@@ -16,10 +16,13 @@ type Config struct {
 	LNbitsAdminKey string
 
 	// Billing
-	MarkupPercent float64
+	MarkupPercent   float64
+	MinBalanceUSD   float64 // Minimum wallet balance required (in USD)
+	CheckBalanceFirst bool  // Whether to check balance before processing
 
 	// Abuse protection
-	MaxStrikes int
+	MaxStrikes            int
+	MaxConcurrentRequests int // Max concurrent requests per wallet pubkey
 
 	// Server
 	Port string
@@ -43,8 +46,11 @@ func Load() *Config {
 		OpenAIAPIKey:   getEnv("OPENAI_API_KEY", ""),
 		LNbitsURL:      getEnv("LNBITS_URL", "http://lnbits:5000"),
 		LNbitsAdminKey: getEnv("LNBITS_ADMIN_KEY", ""),
-		MarkupPercent:  getEnvFloat("MARKUP_PERCENT", 5.0),
-		MaxStrikes:     getEnvInt("MAX_STRIKES", 3),
+		MarkupPercent:     getEnvFloat("MARKUP_PERCENT", 5.0),
+		MinBalanceUSD:    getEnvFloat("MIN_BALANCE_USD", 0.50),
+		CheckBalanceFirst: getEnvBool("CHECK_BALANCE_FIRST", true),
+		MaxStrikes:            getEnvInt("MAX_STRIKES", 3),
+		MaxConcurrentRequests: getEnvInt("MAX_CONCURRENT_REQUESTS", 3),
 		Port:           getEnv("API_PORT", "8080"),
 		Treasury: TreasuryConfig{
 			Enabled:       getEnvBool("TREASURY_ENABLED", false),

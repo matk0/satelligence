@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -25,6 +26,7 @@ type NWCHandler struct {
 	moderator      *openai.Provider
 	modelFeed      *models.ModelFeed
 	config         *config.Config
+	rateLimiter    *WalletRateLimiter
 }
 
 func NewNWCHandler(
@@ -34,6 +36,7 @@ func NewNWCHandler(
 	moderator *openai.Provider,
 	modelFeed *models.ModelFeed,
 	cfg *config.Config,
+	rateLimiter *WalletRateLimiter,
 ) *NWCHandler {
 	return &NWCHandler{
 		providerRouter: providerRouter,
@@ -42,33 +45,62 @@ func NewNWCHandler(
 		moderator:      moderator,
 		modelFeed:      modelFeed,
 		config:         cfg,
+		rateLimiter:    rateLimiter,
 	}
+}
+
+// extractNWCFromAuth extracts the NWC connection string from the Authorization header.
+// Expected format: "Authorization: Bearer nostr+walletconnect://..."
+func extractNWCFromAuth(r *http.Request) (string, error) {
+	auth := r.Header.Get("Authorization")
+	if auth == "" {
+		return "", fmt.Errorf("missing Authorization header")
+	}
+
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return "", fmt.Errorf("Authorization header must use Bearer scheme")
+	}
+
+	token := strings.TrimPrefix(auth, "Bearer ")
+	if !strings.HasPrefix(token, "nostr+walletconnect://") {
+		return "", fmt.Errorf("Bearer token must be a nostr+walletconnect:// URL")
+	}
+
+	return token, nil
 }
 
 // ChatCompletions handles chat requests with NWC auto-payment
 // Flow:
-// 1. Estimate cost based on input + max output
-// 2. Charge 2x estimated cost
+// 1. Rate limit check per wallet pubkey
+// 2. Check balance >= estimated max cost
 // 3. Call AI provider
-// 4. Calculate actual cost
-// 5. Refund difference immediately via NWC
+// 4. Post-charge actual cost (accept small losses if payment fails)
 func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get NWC connection string from header
-	nwcURL := r.Header.Get("X-NWC")
-	if nwcURL == "" {
-		writeError(w, http.StatusBadRequest, "missing_nwc", "X-NWC header required with Nostr Wallet Connect URL")
+	// Extract NWC connection string from Authorization header
+	nwcURL, err := extractNWCFromAuth(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized", err.Error())
 		return
 	}
 
 	// Parse NWC connection
 	nwcClient, err := nwc.NewClient(nwcURL)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_nwc", "invalid NWC connection URL: "+err.Error())
+		writeError(w, http.StatusUnauthorized, "invalid_credentials", "invalid NWC connection URL: "+err.Error())
 		return
 	}
 	defer nwcClient.Close()
+
+	// Rate limit check per wallet pubkey
+	walletPubkey := nwcClient.WalletPubkey()
+	if err := h.rateLimiter.Acquire(walletPubkey); err != nil {
+		slog.Info("rate limit exceeded", "wallet_pubkey", walletPubkey)
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "Too many concurrent requests. Please wait for previous requests to complete.")
+		return
+	}
+	defer h.rateLimiter.Release(walletPubkey)
 
 	// Parse request
 	var req provider.ChatRequest
@@ -103,49 +135,52 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 1: Estimate cost based on input + max output
-	estimatedCost := h.billing.EstimateCost(req.Model, inputText, req.MaxTokens)
-
-	// Step 2: Charge 2x estimated cost
-	chargeAmount := estimatedCost * 2
-	if chargeAmount < 1 {
-		chargeAmount = 1
+	// Estimate max cost based on input + max_tokens output
+	estimatedMaxCost := h.billing.EstimateCost(req.Model, inputText, req.MaxTokens)
+	if estimatedMaxCost < 1 {
+		estimatedMaxCost = 1
 	}
 
-	slog.Info("charging for request",
+	// Check wallet balance >= estimated max cost
+	balanceSats, err := nwcClient.GetBalance(ctx, 10*time.Second)
+	if err != nil {
+		slog.Warn("failed to check wallet balance", "error", err)
+		// Continue anyway - some wallets may not support get_balance
+	} else {
+		if balanceSats < estimatedMaxCost {
+			slog.Info("wallet balance too low for estimated cost",
+				"balance_sats", balanceSats,
+				"estimated_max_cost_sats", estimatedMaxCost,
+			)
+			writeError(w, http.StatusPaymentRequired, "insufficient_balance",
+				fmt.Sprintf("Insufficient balance: have %d sats, need %d sats for this request",
+					balanceSats, estimatedMaxCost))
+			return
+		}
+		slog.Debug("wallet balance OK", "balance_sats", balanceSats, "estimated_max_cost_sats", estimatedMaxCost)
+	}
+
+	slog.Info("processing request",
 		"model", req.Model,
 		"max_tokens", req.MaxTokens,
-		"estimated_sats", estimatedCost,
-		"charge_amount_2x", chargeAmount,
+		"estimated_max_cost_sats", estimatedMaxCost,
+		"stream", req.Stream,
 	)
 
-	// Create invoice for 2x amount
-	invoice, err := h.blinkClient.CreateInvoice(ctx, chargeAmount, fmt.Sprintf("Trandor: %s request", req.Model))
-	if err != nil {
-		slog.Error("failed to create invoice", "error", err)
-		writeError(w, http.StatusInternalServerError, "invoice_error", "failed to create payment invoice")
-		return
-	}
-
-	slog.Info("invoice created", "amount", chargeAmount, "hash", invoice.PaymentHash)
-
-	// Charge via NWC
-	preimage, err := nwcClient.PayInvoice(ctx, invoice.PaymentRequest, 30*time.Second)
-	if err != nil {
-		slog.Error("NWC payment failed", "error", err)
-		writeError(w, http.StatusPaymentRequired, "payment_failed", "NWC payment failed: "+err.Error())
-		return
-	}
-
-	slog.Info("payment received", "preimage", preimage, "amount", chargeAmount)
-
-	// Step 3: Call AI provider
+	// Get provider
 	prov, err := h.providerRouter.GetProvider(req.Model)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_model", "model not supported")
 		return
 	}
 
+	// Handle streaming requests
+	if req.Stream {
+		h.handleStreamingResponse(w, ctx, prov, &req, nwcClient, inputText)
+		return
+	}
+
+	// Call AI provider
 	resp, err := prov.Chat(ctx, &req)
 	if err != nil {
 		if openaiErr, ok := err.(*openai.OpenAIError); ok {
@@ -159,7 +194,7 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 4: Calculate actual cost
+	// Calculate actual cost
 	usage := billing.Usage{
 		PromptTokens:     resp.Usage.PromptTokens,
 		CompletionTokens: resp.Usage.CompletionTokens,
@@ -167,35 +202,29 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	actualCost, _ := h.billing.Calculate(usage)
 
-	// Step 5: Calculate and send refund
-	refundAmount := chargeAmount - actualCost.TotalSats
-	var refundStatus string
-
-	if refundAmount > 0 {
-		slog.Info("processing refund",
-			"charged", chargeAmount,
-			"actual_cost", actualCost.TotalSats,
-			"refund", refundAmount,
-		)
-
-		// Ask user's wallet to create invoice for refund
-		refundInvoice, err := nwcClient.MakeInvoice(ctx, refundAmount, "Trandor refund", 30*time.Second)
+	// Post-charge actual cost
+	var chargeStatus string
+	if actualCost.TotalSats > 0 {
+		invoice, err := h.blinkClient.CreateInvoice(ctx, actualCost.TotalSats, fmt.Sprintf("Trandor: %s request", req.Model))
 		if err != nil {
-			slog.Error("failed to create refund invoice", "error", err)
-			refundStatus = "failed: " + err.Error()
+			slog.Error("failed to create invoice for post-charge", "error", err, "amount", actualCost.TotalSats)
+			chargeStatus = "invoice_failed"
 		} else {
-			// Pay the refund invoice from our Blink wallet
-			_, err = h.blinkClient.PayInvoice(ctx, refundInvoice)
+			_, err = nwcClient.PayInvoice(ctx, invoice.PaymentRequest, 30*time.Second)
 			if err != nil {
-				slog.Error("failed to pay refund", "error", err)
-				refundStatus = "failed: " + err.Error()
+				slog.Warn("post-charge failed, accepting loss",
+					"error", err,
+					"amount_sats", actualCost.TotalSats,
+					"wallet_pubkey", walletPubkey,
+				)
+				chargeStatus = "payment_failed"
 			} else {
-				slog.Info("refund sent", "amount", refundAmount)
-				refundStatus = "success"
+				slog.Info("post-charge successful", "amount_sats", actualCost.TotalSats)
+				chargeStatus = "success"
 			}
 		}
 	} else {
-		refundStatus = "none"
+		chargeStatus = "zero_cost"
 	}
 
 	slog.Info("request completed",
@@ -203,20 +232,184 @@ func (h *NWCHandler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		"prompt_tokens", resp.Usage.PromptTokens,
 		"completion_tokens", resp.Usage.CompletionTokens,
 		"cost_usd", fmt.Sprintf("$%.8f", actualCost.TotalUSD),
-		"charged_sats", chargeAmount,
-		"actual_cost_sats", actualCost.TotalSats,
-		"refund_sats", refundAmount,
-		"refund_status", refundStatus,
+		"cost_sats", actualCost.TotalSats,
+		"charge_status", chargeStatus,
 	)
 
 	// Return response with cost info
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-Charged-Sats", fmt.Sprintf("%d", chargeAmount))
 	w.Header().Set("X-Cost-Sats", fmt.Sprintf("%d", actualCost.TotalSats))
 	w.Header().Set("X-Cost-USD", fmt.Sprintf("%.6f", actualCost.TotalUSD))
-	w.Header().Set("X-Refund-Sats", fmt.Sprintf("%d", refundAmount))
-	w.Header().Set("X-Refund-Status", refundStatus)
+	w.Header().Set("X-Charge-Status", chargeStatus)
 	json.NewEncoder(w).Encode(resp)
+}
+
+// handleStreamingResponse handles streaming chat completions with SSE format
+// Proxies SSE chunks from upstream OpenAI provider
+func (h *NWCHandler) handleStreamingResponse(
+	w http.ResponseWriter,
+	ctx context.Context,
+	prov provider.Provider,
+	req *provider.ChatRequest,
+	nwcClient *nwc.Client,
+	inputText string,
+) {
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Should-Retry", "false") // Prevent OpenAI SDK from auto-retrying
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming_not_supported", "streaming not supported by server")
+		return
+	}
+
+	// Cast to OpenAI provider for streaming
+	openaiProv, ok := prov.(*openai.Provider)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming_not_supported", "provider does not support streaming")
+		return
+	}
+
+	// Ensure stream options include usage
+	if req.StreamOptions == nil {
+		req.StreamOptions = &provider.ChatStreamOptions{IncludeUsage: true}
+	} else {
+		req.StreamOptions.IncludeUsage = true
+	}
+
+	stream, err := openaiProv.ChatStream(ctx, req)
+	if err != nil {
+		if openaiErr, ok := err.(*openai.OpenAIError); ok {
+			// Send error as SSE
+			errData, _ := json.Marshal(map[string]interface{}{
+				"error": map[string]string{
+					"message": openaiErr.Message,
+					"type":    openaiErr.Type,
+					"code":    openaiErr.Code,
+				},
+			})
+			fmt.Fprintf(w, "data: %s\n\n", errData)
+			flusher.Flush()
+			return
+		}
+		slog.Error("provider stream error", "error", err)
+		errData, _ := json.Marshal(map[string]interface{}{
+			"error": map[string]string{
+				"message": "upstream provider error",
+				"type":    "provider_error",
+			},
+		})
+		fmt.Fprintf(w, "data: %s\n\n", errData)
+		flusher.Flush()
+		return
+	}
+	defer stream.Close()
+
+	// Proxy SSE chunks from upstream
+	var usage *provider.ChatUsage
+	var receivedDone bool
+
+	for {
+		line, ok, err := stream.Next()
+		if err != nil {
+			slog.Error("stream read error", "error", err)
+			break
+		}
+		if !ok {
+			break
+		}
+
+		// Skip empty lines
+		if line == "" {
+			continue
+		}
+
+		// Forward the SSE line as-is (it already has "data: " prefix from OpenAI)
+		if strings.HasPrefix(line, "data: ") {
+			fmt.Fprintf(w, "%s\n\n", line)
+			flusher.Flush()
+
+			// Check for [DONE] marker
+			if line == "data: [DONE]" {
+				receivedDone = true
+				continue
+			}
+
+			// Parse chunk to capture usage
+			chunk, parseErr := openai.ParseStreamChunk(line)
+			if parseErr == nil && chunk != nil && chunk.Usage != nil {
+				usage = chunk.Usage
+			}
+		}
+	}
+
+	// Only send [DONE] if we didn't receive it from upstream
+	if !receivedDone {
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}
+
+	// Post-charge actual cost after streaming completes
+	go h.processStreamingPostCharge(ctx, nwcClient, usage, req.Model)
+}
+
+// processStreamingPostCharge handles post-charging after streaming completes
+func (h *NWCHandler) processStreamingPostCharge(
+	ctx context.Context,
+	nwcClient *nwc.Client,
+	usage *provider.ChatUsage,
+	model string,
+) {
+	if usage == nil {
+		slog.Warn("no usage data from streaming response, cannot calculate cost")
+		return
+	}
+
+	usageCalc := billing.Usage{
+		PromptTokens:     usage.PromptTokens,
+		CompletionTokens: usage.CompletionTokens,
+		Model:            model,
+	}
+	actualCost, _ := h.billing.Calculate(usageCalc)
+
+	if actualCost.TotalSats <= 0 {
+		slog.Info("streaming request completed, zero cost",
+			"model", model,
+			"prompt_tokens", usage.PromptTokens,
+			"completion_tokens", usage.CompletionTokens,
+		)
+		return
+	}
+
+	// Create charge context with timeout
+	chargeCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	invoice, err := h.blinkClient.CreateInvoice(chargeCtx, actualCost.TotalSats, fmt.Sprintf("Trandor: %s streaming", model))
+	if err != nil {
+		slog.Error("failed to create invoice for streaming post-charge", "error", err, "amount", actualCost.TotalSats)
+		return
+	}
+
+	_, err = nwcClient.PayInvoice(chargeCtx, invoice.PaymentRequest, 30*time.Second)
+	if err != nil {
+		slog.Warn("streaming post-charge failed, accepting loss",
+			"error", err,
+			"amount_sats", actualCost.TotalSats,
+			"wallet_pubkey", nwcClient.WalletPubkey(),
+		)
+		return
+	}
+
+	slog.Info("streaming post-charge successful",
+		"model", model,
+		"amount_sats", actualCost.TotalSats,
+		"prompt_tokens", usage.PromptTokens,
+		"completion_tokens", usage.CompletionTokens,
+	)
 }
 
 // SSE event types for streaming progress
@@ -271,20 +464,29 @@ func (h *NWCHandler) ChatCompletionsStream(w http.ResponseWriter, r *http.Reques
 	// Step 1: Wallet connection
 	sendStep("wallet_connect", "pending", nil)
 
-	nwcURL := r.Header.Get("X-NWC")
-	if nwcURL == "" {
+	nwcURL, err := extractNWCFromAuth(r)
+	if err != nil {
 		sendStep("wallet_connect", "error", nil)
-		sendError("missing_nwc", "X-NWC header required")
+		sendError("unauthorized", err.Error())
 		return
 	}
 
 	nwcClient, err := nwc.NewClient(nwcURL)
 	if err != nil {
 		sendStep("wallet_connect", "error", nil)
-		sendError("invalid_nwc", "Invalid NWC connection: "+err.Error())
+		sendError("invalid_credentials", "Invalid NWC connection: "+err.Error())
 		return
 	}
 	defer nwcClient.Close()
+
+	// Rate limit check
+	walletPubkey := nwcClient.WalletPubkey()
+	if err := h.rateLimiter.Acquire(walletPubkey); err != nil {
+		sendStep("wallet_connect", "error", nil)
+		sendError("rate_limited", "Too many concurrent requests")
+		return
+	}
+	defer h.rateLimiter.Release(walletPubkey)
 
 	sendStep("wallet_connect", "complete", nil)
 
@@ -325,53 +527,34 @@ func (h *NWCHandler) ChatCompletionsStream(w http.ResponseWriter, r *http.Reques
 		sendStep("moderation", "complete", nil)
 	}
 
-	// Step 3: Cost estimation
-	sendStep("cost_estimate", "pending", nil)
+	// Step 3: Balance check
+	sendStep("balance_check", "pending", nil)
 
-	estimatedCost := h.billing.EstimateCost(req.Model, inputText, req.MaxTokens)
-	chargeAmount := estimatedCost * 2
-	if chargeAmount < 1 {
-		chargeAmount = 1
+	estimatedMaxCost := h.billing.EstimateCost(req.Model, inputText, req.MaxTokens)
+	if estimatedMaxCost < 1 {
+		estimatedMaxCost = 1
 	}
 
-	sendStep("cost_estimate", "complete", map[string]interface{}{
-		"estimated_sats": estimatedCost,
-		"charge_sats":    chargeAmount,
-	})
-
-	// Step 4: Invoice creation
-	sendStep("invoice_create", "pending", nil)
-
-	invoice, err := h.blinkClient.CreateInvoice(ctx, chargeAmount, fmt.Sprintf("Trandor: %s request", req.Model))
+	balanceSats, err := nwcClient.GetBalance(ctx, 10*time.Second)
 	if err != nil {
-		slog.Error("failed to create invoice", "error", err)
-		sendStep("invoice_create", "error", nil)
-		sendError("invoice_error", "Failed to create invoice")
-		return
+		slog.Warn("failed to check wallet balance", "error", err)
+		sendStep("balance_check", "complete", map[string]interface{}{
+			"warning":            "balance check unavailable",
+			"estimated_max_sats": estimatedMaxCost,
+		})
+	} else {
+		if balanceSats < estimatedMaxCost {
+			sendStep("balance_check", "error", nil)
+			sendError("insufficient_balance", fmt.Sprintf("Need %d sats, have %d", estimatedMaxCost, balanceSats))
+			return
+		}
+		sendStep("balance_check", "complete", map[string]interface{}{
+			"balance_sats":       balanceSats,
+			"estimated_max_sats": estimatedMaxCost,
+		})
 	}
 
-	sendStep("invoice_create", "complete", map[string]interface{}{
-		"amount_sats": chargeAmount,
-	})
-
-	// Step 5: Payment request
-	sendStep("payment_request", "pending", map[string]interface{}{
-		"amount_sats": chargeAmount,
-	})
-
-	preimage, err := nwcClient.PayInvoice(ctx, invoice.PaymentRequest, 30*time.Second)
-	if err != nil {
-		slog.Error("NWC payment failed", "error", err)
-		sendStep("payment_request", "error", nil)
-		sendError("payment_failed", "Payment failed: "+err.Error())
-		return
-	}
-
-	sendStep("payment_request", "complete", map[string]interface{}{
-		"preimage": preimage[:16] + "...", // Truncate for display
-	})
-
-	// Step 6: AI generation (streaming)
+	// Step 4: AI generation (streaming)
 	sendStep("generation", "pending", nil)
 
 	prov, err := h.providerRouter.GetProvider(req.Model)
@@ -387,6 +570,13 @@ func (h *NWCHandler) ChatCompletionsStream(w http.ResponseWriter, r *http.Reques
 		sendStep("generation", "error", nil)
 		sendError("streaming_not_supported", "Provider does not support streaming")
 		return
+	}
+
+	// Ensure stream options include usage
+	if req.StreamOptions == nil {
+		req.StreamOptions = &provider.ChatStreamOptions{IncludeUsage: true}
+	} else {
+		req.StreamOptions.IncludeUsage = true
 	}
 
 	stream, err := openaiProv.ChatStream(ctx, &req)
@@ -444,12 +634,12 @@ func (h *NWCHandler) ChatCompletionsStream(w http.ResponseWriter, r *http.Reques
 
 	sendStep("generation", "complete", nil)
 
-	// Step 7: Cost calculation
-	sendStep("cost_calculate", "pending", nil)
+	// Step 5: Cost calculation and post-charge
+	sendStep("payment", "pending", nil)
 
 	var actualCostSats int64 = 0
 	var actualCostUSD float64 = 0
-	var refundAmount int64 = 0
+	var chargeStatus string
 
 	if usage != nil {
 		usageCalc := billing.Usage{
@@ -460,62 +650,52 @@ func (h *NWCHandler) ChatCompletionsStream(w http.ResponseWriter, r *http.Reques
 		actualCost, _ := h.billing.Calculate(usageCalc)
 		actualCostSats = actualCost.TotalSats
 		actualCostUSD = actualCost.TotalUSD
-		refundAmount = chargeAmount - actualCostSats
-		if refundAmount < 0 {
-			refundAmount = 0
+
+		if actualCostSats > 0 {
+			invoice, err := h.blinkClient.CreateInvoice(ctx, actualCostSats, fmt.Sprintf("Trandor: %s request", req.Model))
+			if err != nil {
+				slog.Error("failed to create invoice for post-charge", "error", err)
+				chargeStatus = "invoice_failed"
+			} else {
+				_, err = nwcClient.PayInvoice(ctx, invoice.PaymentRequest, 30*time.Second)
+				if err != nil {
+					slog.Warn("post-charge failed, accepting loss", "error", err, "amount", actualCostSats)
+					chargeStatus = "payment_failed"
+				} else {
+					chargeStatus = "success"
+				}
+			}
+		} else {
+			chargeStatus = "zero_cost"
 		}
+	} else {
+		chargeStatus = "no_usage"
 	}
 
-	sendStep("cost_calculate", "complete", map[string]interface{}{
-		"cost_sats":   actualCostSats,
-		"cost_usd":    actualCostUSD,
-		"refund_sats": refundAmount,
+	sendStep("payment", "complete", map[string]interface{}{
+		"cost_sats":     actualCostSats,
+		"cost_usd":      actualCostUSD,
+		"charge_status": chargeStatus,
 	})
 
-	// Step 8: Refund processing
-	if refundAmount > 0 {
-		sendStep("refund", "pending", map[string]interface{}{
-			"amount_sats": refundAmount,
-		})
-
-		refundInvoice, err := nwcClient.MakeInvoice(ctx, refundAmount, "Trandor refund", 30*time.Second)
-		if err != nil {
-			slog.Error("failed to create refund invoice", "error", err)
-			sendStep("refund", "error", map[string]interface{}{
-				"error": "Failed to create refund invoice",
-			})
-		} else {
-			_, err = h.blinkClient.PayInvoice(ctx, refundInvoice)
-			if err != nil {
-				slog.Error("failed to pay refund", "error", err)
-				sendStep("refund", "error", map[string]interface{}{
-					"error": "Failed to send refund",
-				})
-			} else {
-				sendStep("refund", "complete", map[string]interface{}{
-					"amount_sats": refundAmount,
-				})
-			}
-		}
+	// Send final summary
+	usageMap := map[string]interface{}{}
+	if usage != nil {
+		usageMap["prompt_tokens"] = usage.PromptTokens
+		usageMap["completion_tokens"] = usage.CompletionTokens
 	}
 
-	// Send final summary
 	sendSSE(w, flusher, "complete", map[string]interface{}{
-		"content":      fullContent.String(),
-		"charged_sats": chargeAmount,
-		"cost_sats":    actualCostSats,
-		"cost_usd":     actualCostUSD,
-		"refund_sats":  refundAmount,
-		"usage": map[string]interface{}{
-			"prompt_tokens":     usage.PromptTokens,
-			"completion_tokens": usage.CompletionTokens,
-		},
+		"content":       fullContent.String(),
+		"cost_sats":     actualCostSats,
+		"cost_usd":      actualCostUSD,
+		"charge_status": chargeStatus,
+		"usage":         usageMap,
 	})
 
 	slog.Info("streaming request completed",
 		"model", req.Model,
-		"charged_sats", chargeAmount,
-		"actual_cost_sats", actualCostSats,
-		"refund_sats", refundAmount,
+		"cost_sats", actualCostSats,
+		"charge_status", chargeStatus,
 	)
 }

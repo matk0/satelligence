@@ -67,15 +67,22 @@ type ChatMessage struct {
 	Content MessageContent `json:"content"`
 }
 
+// ChatStreamOptions contains options for streaming
+type ChatStreamOptions struct {
+	IncludeUsage bool `json:"include_usage,omitempty"`
+}
+
 // ChatRequest represents a chat completion request
 type ChatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []ChatMessage `json:"messages"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
-	Temperature *float64      `json:"temperature,omitempty"`
-	TopP        *float64      `json:"top_p,omitempty"`
-	N           int           `json:"n,omitempty"`
-	Stop        []string      `json:"stop,omitempty"`
+	Model         string             `json:"model"`
+	Messages      []ChatMessage      `json:"messages"`
+	MaxTokens     int                `json:"max_tokens,omitempty"`
+	Temperature   *float64           `json:"temperature,omitempty"`
+	TopP          *float64           `json:"top_p,omitempty"`
+	N             int                `json:"n,omitempty"`
+	Stop          []string           `json:"stop,omitempty"`
+	Stream        bool               `json:"stream,omitempty"`
+	StreamOptions *ChatStreamOptions `json:"stream_options,omitempty"`
 }
 
 // ChatChoice represents a single completion choice
