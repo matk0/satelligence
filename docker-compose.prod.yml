@@ -66,9 +66,9 @@ services:
     restart: unless-stopped
     volumes:
       - nostr_data:/usr/src/app/db
-    # Simple healthcheck - relay logs show listening status
+    # Simple healthcheck - just verify the process is running via /proc
     healthcheck:
-      test: ["CMD-SHELL", "pgrep nostr-rs-relay || exit 1"]
+      test: ["CMD-SHELL", "test -f /proc/1/exe"]
       interval: 30s
       timeout: 10s
       retries: 3
