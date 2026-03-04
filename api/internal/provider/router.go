@@ -42,23 +42,3 @@ func (r *Router) GetProvider(model string) (Provider, error) {
 
 	return provider, nil
 }
-
-// ListModels returns all registered model names
-func (r *Router) ListModels() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	models := make([]string, 0, len(r.providers))
-	for model := range r.providers {
-		models = append(models, model)
-	}
-	return models
-}
-
-// IsModelSupported checks if a model is registered
-func (r *Router) IsModelSupported(model string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	_, ok := r.providers[model]
-	return ok
-}

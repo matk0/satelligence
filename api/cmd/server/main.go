@@ -14,8 +14,9 @@ import (
 	"github.com/trandor/trandor/internal/api"
 	"github.com/trandor/trandor/internal/billing"
 	"github.com/trandor/trandor/internal/blink"
-	"github.com/trandor/trandor/internal/models"
 	"github.com/trandor/trandor/internal/lnbits"
+	"github.com/trandor/trandor/internal/models"
+	"github.com/trandor/trandor/internal/payment"
 	"github.com/trandor/trandor/internal/provider"
 	"github.com/trandor/trandor/internal/provider/openai"
 	"github.com/trandor/trandor/internal/treasury"
@@ -66,11 +67,14 @@ func main() {
 	// Initialize rate limiter for concurrent requests per wallet
 	rateLimiter := api.NewWalletRateLimiter(cfg.MaxConcurrentRequests)
 
+	// Initialize payment charger
+	charger := payment.NewCharger(blinkClient)
+
 	// Initialize NWC handler (the only payment method)
 	nwcHandler := api.NewNWCHandler(
 		providerRouter,
 		billingCalc,
-		blinkClient,
+		charger,
 		openaiProvider, // for content moderation
 		modelFeed,
 		cfg,
@@ -81,7 +85,7 @@ func main() {
 	responsesHandler := api.NewResponsesHandler(
 		openaiProvider,
 		billingCalc,
-		blinkClient,
+		charger,
 		modelFeed,
 		cfg,
 		rateLimiter,
