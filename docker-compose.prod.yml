@@ -72,6 +72,9 @@ services:
       - LNBITS_SITE_TITLE=Trandor Wallets
       - LNBITS_DEFAULT_WALLET_NAME=Agent Wallet
       - LNBITS_EXTENSIONS_DEFAULT_INSTALL=nwcprovider
+      # NWC Provider - use external Nostr relay for NWC communication
+      - NWCPROVIDER_RELAY=wss://relay.damus.io
+      - NWCPROVIDER_RELAY_ALIAS=wss://relay.damus.io
     volumes:
       - lnbits_data:/app/data
     healthcheck:

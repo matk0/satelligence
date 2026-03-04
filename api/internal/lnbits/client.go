@@ -385,9 +385,8 @@ func (c *Client) fetchPairingURL(ctx context.Context, secret string) (string, er
 		pairingURL = strings.Trim(string(respBody), "\"")
 	}
 
-	// Replace internal Docker URL with external relay URL
-	pairingURL = strings.Replace(pairingURL, "ws://lnbits:5000", "wss://relay.trandor.com", 1)
-	pairingURL = strings.Replace(pairingURL, "ws://localhost:5000", "wss://relay.trandor.com", 1)
+	// LNbits NWC provider is configured to use external relay (relay.damus.io)
+	// via NWCPROVIDER_RELAY env var, so no URL replacement needed
 
 	return pairingURL, nil
 }
