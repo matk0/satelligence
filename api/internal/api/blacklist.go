@@ -57,6 +57,28 @@ func (b *WalletBlacklist) Add(pubkey string) {
 	}()
 }
 
+// Remove removes a wallet pubkey from the blacklist
+func (b *WalletBlacklist) Remove(pubkey string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if _, exists := b.wallets[pubkey]; !exists {
+		return false // Not blacklisted
+	}
+
+	delete(b.wallets, pubkey)
+	slog.Info("wallet removed from blacklist", "pubkey", pubkey)
+
+	// Save asynchronously to not block the caller
+	go func() {
+		if err := b.save(); err != nil {
+			slog.Error("failed to save blacklist after removal", "error", err)
+		}
+	}()
+
+	return true
+}
+
 // Load loads the blacklist from the file
 func (b *WalletBlacklist) Load() error {
 	b.mu.Lock()

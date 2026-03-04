@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"sync"
@@ -17,13 +18,64 @@ import (
 const (
 	KindNWCRequest  = 23194
 	KindNWCResponse = 23195
+
+	// Retry configuration
+	maxRetries     = 3
+	initialBackoff = 500 * time.Millisecond
+	maxBackoff     = 5 * time.Second
 )
+
+// BackupRelays are fallback relays to try if the primary relay fails.
+// These are popular, reliable Nostr relays that wallet services may also connect to.
+var BackupRelays = []string{
+	"wss://nos.lol",
+	"wss://relay.nostr.band",
+	"wss://nostr.wine",
+	"wss://relay.snort.social",
+	"wss://nostr.mom",
+}
 
 var (
 	ErrPaymentFailed  = errors.New("payment failed")
 	ErrPaymentTimeout = errors.New("payment timeout")
 	ErrInvalidNWCURL  = errors.New("invalid NWC connection URL")
+	ErrRelayFailed    = errors.New("relay connection failed")
 )
+
+// IsInfrastructureError returns true if the error is due to infrastructure issues
+// (relay failures, timeouts, etc.) rather than wallet-level payment failures.
+// Infrastructure errors should NOT cause wallet blacklisting.
+func IsInfrastructureError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Timeout is infrastructure - the wallet never got to respond
+	if errors.Is(err, ErrPaymentTimeout) {
+		return true
+	}
+	// Relay failures are infrastructure
+	if errors.Is(err, ErrRelayFailed) {
+		return true
+	}
+	// Check for wrapped relay/connection errors by message
+	errStr := err.Error()
+	if strings.Contains(errStr, "failed to connect to relay") ||
+		strings.Contains(errStr, "failed to subscribe") ||
+		strings.Contains(errStr, "failed to publish") {
+		return true
+	}
+	return false
+}
+
+// IsPaymentError returns true if the error indicates the wallet explicitly refused
+// or failed to complete the payment. These errors should trigger blacklisting.
+func IsPaymentError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check if it's explicitly a payment failure from the wallet
+	return errors.Is(err, ErrPaymentFailed)
+}
 
 // ConnectionInfo holds parsed NWC connection details
 type ConnectionInfo struct {
@@ -34,12 +86,14 @@ type ConnectionInfo struct {
 
 // Client handles NWC communication
 type Client struct {
-	connInfo   *ConnectionInfo
-	secretKey  string
-	pubKey     string
-	relay      *nostr.Relay
-	mu         sync.Mutex
-	connected  bool
+	connInfo      *ConnectionInfo
+	secretKey     string
+	pubKey        string
+	relay         *nostr.Relay
+	currentRelay  string // URL of currently connected relay
+	mu            sync.Mutex
+	connected     bool
+	relaysToTry   []string // Primary relay + backups
 }
 
 // WalletPubkey returns the wallet's public key (used for credit tracking)
@@ -99,14 +153,23 @@ func NewClient(nwcURL string) (*Client, error) {
 		return nil, fmt.Errorf("failed to derive public key: %w", err)
 	}
 
+	// Build list of relays to try: primary first, then backups
+	relays := []string{connInfo.RelayURL}
+	for _, backup := range BackupRelays {
+		if backup != connInfo.RelayURL {
+			relays = append(relays, backup)
+		}
+	}
+
 	return &Client{
-		connInfo:  connInfo,
-		secretKey: connInfo.Secret,
-		pubKey:    pubKey,
+		connInfo:    connInfo,
+		secretKey:   connInfo.Secret,
+		pubKey:      pubKey,
+		relaysToTry: relays,
 	}, nil
 }
 
-// Connect establishes connection to the relay
+// Connect establishes connection to a relay, trying multiple relays if needed
 func (c *Client) Connect(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -115,14 +178,77 @@ func (c *Client) Connect(ctx context.Context) error {
 		return nil
 	}
 
-	relay, err := nostr.RelayConnect(ctx, c.connInfo.RelayURL)
-	if err != nil {
-		return fmt.Errorf("failed to connect to relay: %w", err)
+	var lastErr error
+	for _, relayURL := range c.relaysToTry {
+		relay, err := c.connectToRelayWithRetry(ctx, relayURL)
+		if err != nil {
+			slog.Debug("failed to connect to relay, trying next",
+				"relay", relayURL,
+				"error", err)
+			lastErr = err
+			continue
+		}
+
+		c.relay = relay
+		c.currentRelay = relayURL
+		c.connected = true
+		if relayURL != c.connInfo.RelayURL {
+			slog.Info("connected to backup relay",
+				"primary", c.connInfo.RelayURL,
+				"backup", relayURL)
+		}
+		return nil
 	}
 
-	c.relay = relay
-	c.connected = true
-	return nil
+	return fmt.Errorf("%w: all relays failed, last error: %v", ErrRelayFailed, lastErr)
+}
+
+// connectToRelayWithRetry attempts to connect to a single relay with exponential backoff
+func (c *Client) connectToRelayWithRetry(ctx context.Context, relayURL string) (*nostr.Relay, error) {
+	var lastErr error
+	backoff := initialBackoff
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			slog.Debug("retrying relay connection",
+				"relay", relayURL,
+				"attempt", attempt+1,
+				"backoff", backoff)
+
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+
+			// Exponential backoff with cap
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+
+		relay, err := nostr.RelayConnect(ctx, relayURL)
+		if err == nil {
+			return relay, nil
+		}
+		lastErr = err
+	}
+
+	return nil, lastErr
+}
+
+// reconnect forces a reconnection, useful after relay failures
+func (c *Client) reconnect(ctx context.Context) error {
+	c.mu.Lock()
+	if c.relay != nil {
+		c.relay.Close()
+		c.relay = nil
+	}
+	c.connected = false
+	c.mu.Unlock()
+
+	return c.Connect(ctx)
 }
 
 // Close closes the relay connection
@@ -180,12 +306,65 @@ type GetBalanceResult struct {
 	Balance int64 `json:"balance"` // in millisats
 }
 
-// sendRequest sends an NWC request and returns the response
+// sendRequest sends an NWC request and returns the response, with retry logic
 func (c *Client) sendRequest(ctx context.Context, method string, params interface{}, timeout time.Duration) (*NWCResponse, error) {
-	if err := c.Connect(ctx); err != nil {
-		return nil, err
+	var lastErr error
+	backoff := initialBackoff
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			slog.Debug("retrying NWC request",
+				"method", method,
+				"attempt", attempt+1,
+				"backoff", backoff)
+
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+
+			// Exponential backoff
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+
+			// Force reconnect on retry (try different relay)
+			if err := c.reconnect(ctx); err != nil {
+				lastErr = err
+				continue
+			}
+		} else {
+			// First attempt - just connect
+			if err := c.Connect(ctx); err != nil {
+				lastErr = err
+				continue
+			}
+		}
+
+		resp, err := c.sendRequestOnce(ctx, method, params, timeout)
+		if err == nil {
+			return resp, nil
+		}
+
+		// Only retry on infrastructure errors, not payment errors
+		if !IsInfrastructureError(err) {
+			return nil, err
+		}
+
+		lastErr = err
+		slog.Warn("NWC request failed with infrastructure error, will retry",
+			"method", method,
+			"attempt", attempt+1,
+			"error", err)
 	}
 
+	return nil, fmt.Errorf("all retry attempts failed: %w", lastErr)
+}
+
+// sendRequestOnce sends a single NWC request without retry
+func (c *Client) sendRequestOnce(ctx context.Context, method string, params interface{}, timeout time.Duration) (*NWCResponse, error) {
 	// Create the request payload
 	reqPayload := NWCRequest{
 		Method: method,
@@ -235,14 +414,22 @@ func (c *Client) sendRequest(ctx context.Context, method string, params interfac
 		Tags:    nostr.TagMap{"e": []string{event.ID}},
 	}}
 
-	sub, err := c.relay.Subscribe(timeoutCtx, filters)
+	c.mu.Lock()
+	relay := c.relay
+	c.mu.Unlock()
+
+	if relay == nil {
+		return nil, fmt.Errorf("%w: no relay connection", ErrRelayFailed)
+	}
+
+	sub, err := relay.Subscribe(timeoutCtx, filters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to subscribe: %w", err)
 	}
 	defer sub.Close()
 
 	// Publish the request
-	if err := c.relay.Publish(timeoutCtx, event); err != nil {
+	if err := relay.Publish(timeoutCtx, event); err != nil {
 		return nil, fmt.Errorf("failed to publish request: %w", err)
 	}
 

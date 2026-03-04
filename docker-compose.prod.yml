@@ -30,6 +30,9 @@ services:
       - LNBITS_URL=http://lnbits:5000
       - LNBITS_ADMIN_KEY=${LNBITS_ADMIN_KEY}
       - PORT=8080
+      - BLACKLIST_FILE=/data/blacklist.json
+    volumes:
+      - api_data:/data
     depends_on:
       lnbits:
         condition: service_healthy
@@ -82,3 +85,4 @@ volumes:
   caddy_data:
   caddy_config:
   lnbits_data:
+  api_data:

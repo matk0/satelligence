@@ -82,14 +82,24 @@ func (c *Charger) PostCharge(
 	_, err = nwcClient.PayInvoice(ctx, invoice.PaymentRequest, 30*time.Second)
 	if err != nil {
 		walletPubkey := nwcClient.WalletPubkey()
-		slog.Warn("post-charge failed, accepting loss and blacklisting wallet",
-			"error", err,
-			"amount_sats", cost.TotalSats,
-			"wallet_pubkey", walletPubkey,
-		)
-		// Blacklist the wallet to prevent future scams
-		if c.blacklist != nil {
-			c.blacklist.Add(walletPubkey)
+
+		// Only blacklist for actual payment failures, not infrastructure issues
+		if nwc.IsInfrastructureError(err) {
+			slog.Warn("post-charge failed due to infrastructure issue (not blacklisting)",
+				"error", err,
+				"amount_sats", cost.TotalSats,
+				"wallet_pubkey", walletPubkey,
+			)
+		} else {
+			slog.Warn("post-charge failed, accepting loss and blacklisting wallet",
+				"error", err,
+				"amount_sats", cost.TotalSats,
+				"wallet_pubkey", walletPubkey,
+			)
+			// Blacklist the wallet to prevent future scams
+			if c.blacklist != nil {
+				c.blacklist.Add(walletPubkey)
+			}
 		}
 		return &ChargeResult{
 			Status:     ChargePaymentFailed,
@@ -138,14 +148,24 @@ func (c *Charger) PostChargeAsync(
 		_, err = nwcClient.PayInvoice(ctx, invoice.PaymentRequest, 30*time.Second)
 		if err != nil {
 			walletPubkey := nwcClient.WalletPubkey()
-			slog.Warn("streaming post-charge failed, accepting loss and blacklisting wallet",
-				"error", err,
-				"amount_sats", cost.TotalSats,
-				"wallet_pubkey", walletPubkey,
-			)
-			// Blacklist the wallet to prevent future scams
-			if c.blacklist != nil {
-				c.blacklist.Add(walletPubkey)
+
+			// Only blacklist for actual payment failures, not infrastructure issues
+			if nwc.IsInfrastructureError(err) {
+				slog.Warn("streaming post-charge failed due to infrastructure issue (not blacklisting)",
+					"error", err,
+					"amount_sats", cost.TotalSats,
+					"wallet_pubkey", walletPubkey,
+				)
+			} else {
+				slog.Warn("streaming post-charge failed, accepting loss and blacklisting wallet",
+					"error", err,
+					"amount_sats", cost.TotalSats,
+					"wallet_pubkey", walletPubkey,
+				)
+				// Blacklist the wallet to prevent future scams
+				if c.blacklist != nil {
+					c.blacklist.Add(walletPubkey)
+				}
 			}
 			return
 		}
