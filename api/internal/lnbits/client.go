@@ -158,6 +158,56 @@ func (c *Client) EnableExtensionForUser(ctx context.Context, userID, extensionID
 	return nil
 }
 
+// InstallExtension installs an extension from the release repository
+// This requires super admin privileges
+func (c *Client) InstallExtension(ctx context.Context, extensionID string) error {
+	reqBody := map[string]string{
+		"ext_id": extensionID,
+		"source": "release",
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/v1/extension", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Api-Key", c.adminKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 200 = installed, 409 = already installed (both are OK)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("LNbits API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// EnsureExtensionsInstalled ensures required extensions are installed
+// Call this at startup to make sure nwcprovider and nostrclient are available
+func (c *Client) EnsureExtensionsInstalled(ctx context.Context) error {
+	extensions := []string{"nwcprovider", "nostrclient"}
+
+	for _, ext := range extensions {
+		if err := c.InstallExtension(ctx, ext); err != nil {
+			return fmt.Errorf("failed to install extension %s: %w", ext, err)
+		}
+	}
+
+	return nil
+}
+
 // CreateWallet creates a new wallet for an existing user
 func (c *Client) CreateWallet(ctx context.Context, userID, walletName string) (*Wallet, error) {
 	reqBody := map[string]string{

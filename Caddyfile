@@ -14,8 +14,10 @@ trandor.com {
 }
 
 # Nostr relay (for NWC WebSocket connections)
+# Proxies to LNbits nostrclient extension which acts as relay multiplexer
 relay.trandor.com {
-    reverse_proxy nostr-relay:8080
+    rewrite * /nostrclient/api/v1/relay
+    reverse_proxy lnbits:5000
 }
 
 # LNbits admin UI

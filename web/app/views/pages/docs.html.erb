@@ -186,7 +186,7 @@ export OPENAI_API_KEY=unused</code></pre>
     </section>
 
     <!-- NWC Setup Guide -->
-    <section class="mb-16">
+    <section id="nwc-setup" class="mb-16">
       <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-2">
         <span class="text-yellow-400">&#x1F4F1;</span> NWC Setup Guide
       </h2>
@@ -397,6 +397,36 @@ export OPENAI_API_KEY=unused</code></pre>
           Autonomous AI agents can create their own hosted Lightning wallets through Trandor.
           This allows agents to manage their own funds without requiring a human to set up external wallet infrastructure.
         </p>
+
+        <!-- Custody Model Warning -->
+        <div class="bg-red-900/20 border border-red-500/30 rounded-lg p-6 mb-8">
+          <h3 class="text-xl font-semibold text-red-400 mb-4">&#x26A0; Custody Model: Important</h3>
+          <p class="text-gray-300 mb-4">
+            <strong class="text-white">Hosted wallets are custodial.</strong> When you create a wallet through Trandor:
+          </p>
+          <ul class="space-y-2 text-gray-300 text-sm mb-4">
+            <li class="flex items-start gap-2">
+              <span class="text-red-400">&#x2022;</span>
+              <span><strong class="text-white">Trandor holds the funds</strong> - Your balance is tracked in our system, backed by our Lightning infrastructure</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-red-400">&#x2022;</span>
+              <span><strong class="text-white">You trust us</strong> - We could theoretically access wallet balances (though we don't without cause)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-red-400">&#x2022;</span>
+              <span><strong class="text-white">Infrastructure risk</strong> - If our systems go down, withdrawals may be temporarily unavailable</span>
+            </li>
+          </ul>
+          <div class="bg-emerald-900/30 border border-emerald-500/30 rounded p-4">
+            <p class="text-emerald-400 font-semibold mb-2">Recommendation: Bring Your Own Wallet</p>
+            <p class="text-gray-400 text-sm">
+              For balances over 10,000 sats or production use, we strongly recommend using your own NWC-compatible wallet
+              (Alby, Phoenix, etc.) instead of hosted wallets. See the <a href="#nwc-setup" class="text-yellow-400 hover:underline">NWC Setup Guide</a> above.
+              With BYOW, you control your keys and we only charge per-request.
+            </p>
+          </div>
+        </div>
 
         <div class="bg-emerald-900/20 border border-emerald-500/30 rounded-lg p-6 mb-8">
           <h3 class="text-xl font-semibold text-emerald-400 mb-4">How It Works</h3>

@@ -22,7 +22,8 @@ services:
     restart: unless-stopped
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      - BLINK_API_KEY=${BLINK_API_KEY}
+      # Revenue Blink account - receives payments when agents use the API
+      - BLINK_API_KEY=${BLINK_API_KEY_REVENUE}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MACAROON_SECRET=${MACAROON_SECRET}
       - MARKUP_PERCENT=${MARKUP_PERCENT:-5}
@@ -59,42 +60,31 @@ services:
       api:
         condition: service_healthy
 
-  # Nostr Relay - for NWC communication (our own relay for reliability)
-  # Supports NIP-01, NIP-04 (encrypted DMs), NIP-09, NIP-11, NIP-12, NIP-15, NIP-16, NIP-20, NIP-22
-  nostr-relay:
-    image: scsibug/nostr-rs-relay:latest
-    restart: unless-stopped
-    volumes:
-      - nostr_data:/usr/src/app/db
-    # Simple healthcheck - just verify the process is running via /proc
-    healthcheck:
-      test: ["CMD-SHELL", "test -f /proc/1/exe"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-
-  # LNbits - Hosted wallet service
+  # LNbits - Hosted wallet service for agents
+  # Uses nostrclient extension as internal relay multiplexer for NWC
   lnbits:
     image: lnbits/lnbits:latest
     restart: unless-stopped
     environment:
+      # Agent wallets funded by separate Blink account (keeps deposits separate from revenue)
       - LNBITS_BACKEND_WALLET_CLASS=BlinkWallet
       - BLINK_API_ENDPOINT=https://api.blink.sv/graphql
       - BLINK_WS_ENDPOINT=wss://ws.blink.sv/graphql
-      - BLINK_TOKEN=${BLINK_API_KEY}
+      - BLINK_TOKEN=${BLINK_API_KEY_AGENTS}
+      # Admin UI
       - LNBITS_ADMIN_UI=true
       - LNBITS_SITE_TITLE=Trandor Wallets
       - LNBITS_DEFAULT_WALLET_NAME=Agent Wallet
-      - LNBITS_EXTENSIONS_DEFAULT_INSTALL=nwcprovider
-      # NWC Provider - use our own Nostr relay for reliability
-      - NWCPROVIDER_RELAY=ws://nostr-relay:8080
+      # Extensions: nwcprovider for NWC, nostrclient as internal relay multiplexer
+      - LNBITS_EXTENSIONS_DEFAULT_INSTALL=nwcprovider,nostrclient
+      # NWC Provider uses nostrclient extension as relay
+      # nostrclient exposes WebSocket at /nostrclient/api/v1/relay
+      - NWCPROVIDER_RELAY=nostrclient
       - NWCPROVIDER_RELAY_ALIAS=wss://relay.trandor.com
+      # nostrclient configuration - enable public websocket endpoint
+      - NOSTRCLIENT_PUBLIC_WS=true
     volumes:
       - lnbits_data:/app/data
-    depends_on:
-      nostr-relay:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/v1/health"]
       interval: 30s
@@ -107,4 +97,3 @@ volumes:
   caddy_config:
   lnbits_data:
   api_data:
-  nostr_data:
