@@ -26,13 +26,13 @@ const (
 )
 
 // BackupRelays are fallback relays to try if the primary relay fails.
-// These are popular, reliable Nostr relays that wallet services may also connect to.
+// For hosted wallets, relay.trandor.com is our own relay where LNbits listens.
+// For BYONWC (Alby, etc.), the primary relay in their connection string is used first.
 var BackupRelays = []string{
+	"wss://relay.trandor.com", // Our own relay (for hosted wallets)
+	"wss://relay.damus.io",    // Popular public relay
 	"wss://nos.lol",
 	"wss://relay.nostr.band",
-	"wss://nostr.wine",
-	"wss://relay.snort.social",
-	"wss://nostr.mom",
 }
 
 var (

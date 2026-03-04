@@ -59,6 +59,19 @@ services:
       api:
         condition: service_healthy
 
+  # Nostr Relay - for NWC communication (our own relay for reliability)
+  nostr-relay:
+    image: scsibug/nostr-rs-relay:latest
+    restart: unless-stopped
+    volumes:
+      - nostr_data:/usr/src/app/db
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   # LNbits - Hosted wallet service
   lnbits:
     image: lnbits/lnbits:latest
@@ -72,11 +85,14 @@ services:
       - LNBITS_SITE_TITLE=Trandor Wallets
       - LNBITS_DEFAULT_WALLET_NAME=Agent Wallet
       - LNBITS_EXTENSIONS_DEFAULT_INSTALL=nwcprovider
-      # NWC Provider - use external Nostr relay for NWC communication
-      - NWCPROVIDER_RELAY=wss://relay.damus.io
-      - NWCPROVIDER_RELAY_ALIAS=wss://relay.damus.io
+      # NWC Provider - use our own Nostr relay for reliability
+      - NWCPROVIDER_RELAY=ws://nostr-relay:8080
+      - NWCPROVIDER_RELAY_ALIAS=wss://relay.trandor.com
     volumes:
       - lnbits_data:/app/data
+    depends_on:
+      nostr-relay:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/v1/health"]
       interval: 30s
@@ -89,3 +105,4 @@ volumes:
   caddy_config:
   lnbits_data:
   api_data:
+  nostr_data:
