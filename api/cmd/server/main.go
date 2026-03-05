@@ -67,15 +67,20 @@ func main() {
 	// Initialize rate limiter for concurrent requests per wallet
 	rateLimiter := api.NewWalletRateLimiter(cfg.MaxConcurrentRequests)
 
-	// Initialize wallet blacklist
-	blacklist := api.NewWalletBlacklist(cfg.BlacklistFile)
-	if err := blacklist.Load(); err != nil {
-		slog.Error("failed to load wallet blacklist", "error", err)
-		os.Exit(1)
+	// Initialize wallet blacklist (optional, disabled by default)
+	var blacklist *api.WalletBlacklist
+	if cfg.BlacklistEnabled {
+		blacklist = api.NewWalletBlacklist(cfg.BlacklistFile)
+		if err := blacklist.Load(); err != nil {
+			slog.Error("failed to load wallet blacklist", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("wallet blacklist enabled", "count", blacklist.Count())
+	} else {
+		slog.Info("wallet blacklist disabled")
 	}
-	slog.Info("wallet blacklist loaded", "count", blacklist.Count())
 
-	// Initialize payment charger (with blacklist for failed payments)
+	// Initialize payment charger
 	charger := payment.NewCharger(blinkClient, blacklist)
 
 	// Initialize NWC handler (the only payment method)
