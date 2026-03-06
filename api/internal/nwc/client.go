@@ -43,11 +43,15 @@ var (
 )
 
 // IsInfrastructureError returns true if the error is due to infrastructure issues
-// (relay failures, timeouts, etc.) rather than wallet-level payment failures.
+// (relay failures, timeouts, context cancellation, etc.) rather than wallet-level payment failures.
 // Infrastructure errors should NOT cause wallet blacklisting.
 func IsInfrastructureError(err error) bool {
 	if err == nil {
 		return false
+	}
+	// Context cancellation/deadline are infrastructure issues (client disconnected, etc.)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
 	}
 	// Timeout is infrastructure - the wallet never got to respond
 	if errors.Is(err, ErrPaymentTimeout) {
@@ -61,7 +65,9 @@ func IsInfrastructureError(err error) bool {
 	errStr := err.Error()
 	if strings.Contains(errStr, "failed to connect to relay") ||
 		strings.Contains(errStr, "failed to subscribe") ||
-		strings.Contains(errStr, "failed to publish") {
+		strings.Contains(errStr, "failed to publish") ||
+		strings.Contains(errStr, "context canceled") ||
+		strings.Contains(errStr, "context deadline exceeded") {
 		return true
 	}
 	return false

@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/nbd-wtf/go-nostr"
 )
 
 // Client interacts with LNbits API for hosted wallet management
@@ -342,13 +344,20 @@ func generateRandomHex(byteLen int) (string, error) {
 // CreateNWCConnection creates an NWC connection for a wallet
 // Returns the pairing URL (nostr+walletconnect://...)
 func (c *Client) CreateNWCConnection(ctx context.Context, walletAdminKey, description string) (*NWCConnection, error) {
-	// Generate a random 32-byte pubkey for the NWC connection
-	pubkey, err := generateRandomHex(32)
+	// Generate a random 32-byte secret (private key) for the NWC connection
+	secret, err := generateRandomHex(32)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate pubkey: %w", err)
+		return nil, fmt.Errorf("failed to generate secret: %w", err)
+	}
+
+	// Derive the public key from the secret - this is what LNbits needs to verify signatures
+	clientPubkey, err := nostr.GetPublicKey(secret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive public key: %w", err)
 	}
 
 	// Create NWC connection via PUT /nwcprovider/api/v1/nwc/{pubkey}
+	// We store the CLIENT'S PUBLIC KEY so LNbits can verify signatures on requests
 	// Set expiry to 10 years from now
 	expiresAt := time.Now().AddDate(10, 0, 0).Unix()
 	reqBody := map[string]interface{}{
@@ -363,7 +372,7 @@ func (c *Client) CreateNWCConnection(ctx context.Context, walletAdminKey, descri
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PUT", c.baseURL+"/nwcprovider/api/v1/nwc/"+pubkey, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "PUT", c.baseURL+"/nwcprovider/api/v1/nwc/"+clientPubkey, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -386,14 +395,21 @@ func (c *Client) CreateNWCConnection(ctx context.Context, walletAdminKey, descri
 		return nil, fmt.Errorf("LNbits NWC API error (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
-	// Now get the pairing URL
-	pairingURL, err := c.getNWCPairingURL(ctx, pubkey)
+	// Get the wallet's NWC service pubkey from the pairing endpoint
+	// The pairing URL format is: nostr+walletconnect://{wallet_service_pubkey}?relay=...&secret=...
+	// We need the wallet service pubkey but will construct the URL with the correct secret
+	basePairingURL, err := c.getNWCPairingURL(ctx, clientPubkey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pairing URL: %w", err)
 	}
 
+	// The base pairing URL has the wrong secret (the pubkey), replace with actual secret
+	// Format: nostr+walletconnect://WALLET_PUBKEY?relay=...&secret=CLIENT_PUBKEY
+	// We need: nostr+walletconnect://WALLET_PUBKEY?relay=...&secret=CLIENT_SECRET
+	pairingURL := strings.Replace(basePairingURL, "&secret="+clientPubkey, "&secret="+secret, 1)
+
 	return &NWCConnection{
-		Pubkey:      pubkey,
+		Pubkey:      clientPubkey,
 		Description: description,
 		PairingURL:  pairingURL,
 	}, nil
